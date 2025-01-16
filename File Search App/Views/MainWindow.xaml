@@ -1,0 +1,20 @@
+﻿<Window x:Class="File_Search_App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:File_Search_App" xmlns:viewmodels="clr-namespace:File_Search_App.ViewModels"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=viewmodels:MainWindowViewModel}"
+        Title="MainWindow" Height="450" Width="800">
+    <Grid>
+        <ListView d:ItemsSource="{d:SampleData ItemCount=5}" ItemsSource="{Binding Names}" Margin="58,32,58,31">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn/>
+                </GridView>
+            </ListView.View>
+        </ListView>
+
+    </Grid>
+</Window>
