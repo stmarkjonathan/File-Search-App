@@ -5,7 +5,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Reflection.Metadata;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Navigation;
@@ -23,6 +26,40 @@ namespace File_Search_App
             GENERIC_EXECUTE = 0x20000000,
             GENERIC_WRITE = 0x40000000,
             GENERIC_READ = 0x80000000,
+        }
+
+        [Flags]
+        enum FileRecordFlags
+        {
+            InUse = 0x01,
+            IsDirectory = 0x02,
+            IsExtension = 0x04,
+            SpecialIndex = 0x08
+        }
+
+        [Flags]
+        enum FileProperties
+        {
+            ReadOnly = 0x01,
+            Hidden = 0x02,
+            System = 0x04,
+            Archive = 0x020,
+            Device = 0x040,
+            Normal = 0x080,
+            Temporary = 0x0100,
+            Sparse = 0x0200,
+            ReparsePoint = 0x0400,
+            Compressed = 0x0800,
+            Offline = 0x1000,
+            NotIndexed = 0x2000,
+            Encrypted = 0x4000,
+
+        }
+
+        enum AttributeTypes : uint
+        {
+            Data = 0x80,
+            EndMarker = 0xFFFFFFFF,
         }
 
         #region Structs 
@@ -62,60 +99,122 @@ namespace File_Search_App
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public struct FileRecordHeader
         {
-            uint magicNum;
-            ushort updateSequenceOffset;
-            ushort updateSequenceSize;
-            ulong logSequenceNum;
-            ushort sequenceNum;
-            ushort hardLinkCount;
-            ushort firstAttributeOffset;
-            ushort inUse; //these are 1 bit bitfields
-            ushort isDirectory; // yikes
-            uint realSize;
-            uint allocatedSize;
-            ulong fileReference;
-            ushort nextAttributeID;
-            ushort unused;
-            uint recordNum;
+            public uint magicNum;
+            public ushort updateSequenceOffset;
+            public ushort updateSequenceSize;
+            public ulong logSequenceNum;
+            public ushort sequenceNum;
+            public ushort hardLinkCount;
+            public ushort firstAttributeOffset;
+            public ushort flags;
+            public uint realSize;
+            public uint allocatedSize;
+            public ulong fileReference;
+            public ushort nextAttributeID;
+            public ushort unused;
+            public uint recordNum;
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public struct AttributeHeader
         {
-            uint attributeType;
-            uint length;
-            byte nonResident;
-            byte nameLength;
-            ushort nameOffset;
-            ushort flags;
-            ushort attributeID;
+            public uint attributeType;
+            public uint length;
+            public byte nonResident;
+            public byte nameLength;
+            public ushort nameOffset;
+            public ushort flags;
+            public ushort attributeID;
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         struct ResidentAttributeHeader
         {
-            AttributeHeader attributeHeader;
-            uint attributeLength;
-            ushort attributeOffset;
-            byte indexed;
-            byte unused;
+            public uint attributeType;
+            public uint length;
+            public byte nonResident;
+            public byte nameLength;
+            public ushort nameOffset;
+            public ushort flags;
+            public ushort attributeID;
+            public uint attributeLength;
+            public ushort attributeOffset;
+            public byte indexed;
+            public byte unused;
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         struct NonResidentAttributeHeader
         {
-            AttributeHeader attributeHeader;
-            ulong firstCluster;
-            ulong lastCluster;
-            ushort dataRunsOffset;
-            ushort compressionUnit;
-            uint unused;
-            ulong attributeAllocated;
-            ulong attributeSize;
-            ulong streamDataSize;
+            public uint attributeType;
+            public uint length;
+            public byte nonResident;
+            public byte nameLength;
+            public ushort nameOffset;
+            public ushort flags;
+            public ushort attributeID;
+            public ulong firstCluster;
+            public ulong lastCluster;
+            public ushort dataRunsOffset;
+            public ushort compressionUnit;
+            public uint unused;
+            public ulong attributeAllocated;
+            public ulong attributeSize;
+            public ulong streamDataSize;
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        struct RunHeader
+        {
+            /*
+             * Data Run Headers contain two 4-bit variables 
+             * a length variable - length of data run in bytes
+             * an offset variable - how much the data run is offset from the previous run
+             */
+            public byte contents;
+            public int GetRunOffset(){ return (contents & 0xF0) >> 4; }
+
+            public int GetRunLength() { return contents & 0x0F;  }
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        struct FileNameAttributeHeader 
+        {
+            public uint attributeType;
+            public uint length;
+            public byte nonResident;
+            public byte nameLength;
+            public ushort nameOffset;
+            public ushort flags;
+            public ushort attributeID;
+            public uint attributeLength;
+            public ushort attributeOffset;
+            public byte indexed;
+            public byte unused;
+            // parentRecordNumber is supposed to be a 6 byte long value,
+            // but since C# doesn't have bitfields, we opt for a 6 byte array
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)]
+            public byte[] parentRecordNumber; 
+            public ushort sequenceNumber;
+            public ulong creationTime;
+            public ulong modificationTime;
+            public ulong metadataModificationTime;
+            public ulong readTime;
+            public ulong allocatedSize;
+            public ulong realSize;
+            public uint fileProperties;
+            public uint repase;
+            public byte fileNameLength;
+            public byte namespaceType;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
+            public char[] fileName;
+            
         }
 
         #endregion
+
+        const int MFT_FILE_SIZE = 1024;
+        const int MFT_FILES_PER_BUFFER = 65536;
 
         public MFTHandler()
         {
@@ -124,9 +223,11 @@ namespace File_Search_App
         }
 
         public unsafe void foo()
-        {
-            uint mftSize = 1024;
-       
+        {           
+
+            byte[] mftFile = new byte[MFT_FILE_SIZE];
+            int mftFilePosition = 0;
+
             BootSector bootSector = new BootSector();
 
             byte[] bootSecBuf = StructToBytes<BootSector>(bootSector);
@@ -143,20 +244,135 @@ namespace File_Search_App
 
             bootSector = BytesToStruct<BootSector>(bootSecBuf);
 
-            byte[] mftFile = new byte[mftSize];
+            int bytesPerCluster = bootSector.bytesPerSector * bootSector.sectorsPerCluster;
 
-            ulong bytesPerCluster = (ulong)bootSector.bytesPerSector * bootSector.sectorsPerCluster;
-
-            ReadHandle(handle, mftFile, (int)(bootSector.mftStart * bytesPerCluster), mftSize);
+            ReadHandle(handle, mftFile, (long)bootSector.mftStart * bytesPerCluster, MFT_FILE_SIZE);
             
             FileRecordHeader fileRecord = BytesToStruct<FileRecordHeader>(mftFile);
 
-            
+            Debug.Assert(fileRecord.magicNum == 0x454C4946);
+
+            mftFilePosition = fileRecord.firstAttributeOffset;
+
+            AttributeHeader attribute = BytesToStruct<AttributeHeader>(mftFile[mftFilePosition..^0]);
+
+            NonResidentAttributeHeader dataAttribute = new NonResidentAttributeHeader();
+
+            int dataAttributePosition = 0;
+
+            while (attribute.attributeType != (uint)AttributeTypes.EndMarker) // 0xFFFFFFFF is the end marker for the attributes
+            {
+                if (attribute.attributeType == (uint)AttributeTypes.Data) // $DATA attribute
+                {
+                    dataAttribute = BytesToStruct<NonResidentAttributeHeader>(mftFile[mftFilePosition..^0]);
+                    dataAttributePosition = mftFilePosition;
+                }
+
+                mftFilePosition += (int)attribute.length;
+
+                attribute = BytesToStruct<AttributeHeader>(mftFile[mftFilePosition..^0]);
+            }
+
+            Debug.Assert(!dataAttribute.Equals(default(NonResidentAttributeHeader)));
+
+            int dataRunPosition = dataAttributePosition + dataAttribute.dataRunsOffset;
+
+            RunHeader dataRun = BytesToStruct<RunHeader>
+                (mftFile[dataRunPosition..^0]);
+
+            long clusterNum = 0;
+            byte[] mftBuffer = new byte[MFT_FILES_PER_BUFFER * MFT_FILE_SIZE];
+
+            while ((dataRunPosition - dataAttributePosition) < dataAttribute.length
+                && dataRun.GetRunLength() > 0)
+            {
+
+                uint length = 0;
+                uint offset = 0;
+
+                for (int i = 0; i < dataRun.GetRunLength(); i++)
+                {
+                    length |= ((uint)mftFile[dataRunPosition + 1 + i]) << (i * 8);
+                }
+
+                for (int i = 0; i < dataRun.GetRunOffset(); i++)
+                {
+                    offset |= ((uint)mftFile[dataRunPosition + 1 + dataRun.GetRunLength() + i]) << (i * 8);
+                }
+
+                if ((offset & (1 << (dataRun.GetRunOffset() * 8 - 1))) > 0)
+                {
+                    for (int i = dataRun.GetRunOffset(); i < 8; i++)
+                    {
+                        offset |= (uint)0xFF << (i * 8);
+                    }
+                }
+
+                clusterNum += offset;
+
+                dataRunPosition += dataRun.GetRunLength() + dataRun.GetRunOffset() + 1;
+                dataRun = BytesToStruct<RunHeader>(mftFile[dataRunPosition..^0]);
+
+                int filesRemaining = (int)length * bytesPerCluster / MFT_FILE_SIZE;
+                long bufferPosition = 0;
+
+                while (filesRemaining > 0)
+                {
+                    int filesToLoad = MFT_FILES_PER_BUFFER;
+
+                    if (filesRemaining < MFT_FILES_PER_BUFFER)
+                        filesToLoad = filesRemaining;
+
+                    ReadHandle(handle,
+                        mftBuffer,
+                        clusterNum * bytesPerCluster + bufferPosition,
+                        (uint)(filesToLoad * MFT_FILE_SIZE));
+
+                    bufferPosition += filesToLoad * MFT_FILE_SIZE;
+                    filesRemaining -= filesToLoad;
+
+                    for (int i = 0; i < filesToLoad; i++)
+                    {
+                        int fileRecordPosition = MFT_FILE_SIZE * i;
+
+                        FileRecordHeader file =
+                            BytesToStruct<FileRecordHeader>(mftBuffer[fileRecordPosition..^0]);
+
+                        Debug.Assert(file.magicNum == 0x454C4946);
+
+                        if ((file.flags & (ushort)FileRecordFlags.InUse) != 1)
+                            continue;
+
+                        int attributePosition = fileRecordPosition + file.firstAttributeOffset;
+
+                        AttributeHeader recordAttribute
+                            = BytesToStruct<AttributeHeader>(mftBuffer[attributePosition..^0]);
+
+                        while(attributePosition - fileRecordPosition < MFT_FILE_SIZE)
+                        {
+                            if(recordAttribute.attributeType == (uint)AttributeTypes.Data)
+                            {
+                                
+                            }
+                            else if(attribute.attributeType != (uint)AttributeTypes.EndMarker)
+                            {
+                                break;
+                            }
+
+                            attributePosition += (int)recordAttribute.length;
+
+                            recordAttribute = BytesToStruct<AttributeHeader>(mftFile[attributePosition..^0]);
+
+
+                        }
+
+                    }
+                }
+
+            }
 
             handle.Close();
         }
-
-        
 
         /// <summary>
         /// Converts a BootSector struct into an array of bytes
@@ -205,6 +421,7 @@ namespace File_Search_App
 
 
 
+
         /// <summary>
         /// Read bytes from <paramref name="handle"/> into <paramref name="buffer"/>, starting at <paramref name="from"/>,
         /// to <paramref name="count"/>.
@@ -214,13 +431,13 @@ namespace File_Search_App
         /// <param name="from">The starting position of the file pointer for the device</param>
         /// <param name="count">The count of bytes to be read from the device</param>
         private unsafe void ReadHandle(SafeFileHandle handle, byte[] buffer,
-            int from, uint count)
+            long from, uint count)
         {
             fixed (byte* bufferPtr = buffer)
             {
                 uint bytesAccessed;
-                PInvoke.SetFilePointer(handle, from,
-                    &from, SET_FILE_POINTER_MOVE_METHOD.FILE_BEGIN);
+                PInvoke.SetFilePointerEx(handle, from,
+                    null, SET_FILE_POINTER_MOVE_METHOD.FILE_BEGIN);
 
                 PInvoke.ReadFile((Windows.Win32.Foundation.HANDLE)handle.DangerousGetHandle(),
                     bufferPtr, count, &bytesAccessed, null);

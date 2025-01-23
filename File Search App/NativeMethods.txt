@@ -1,3 +1,4 @@
 CreateFile
 SetFilePointer
+SetFilePointerEx
 ReadFile
