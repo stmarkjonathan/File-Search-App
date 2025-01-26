@@ -247,11 +247,12 @@ namespace File_Search_App
             Debug.WriteLine("DONE");
         }
 
-        public unsafe void foo()
+        public void foo()
         {
 
             byte[] mftFile = new byte[MFT_FILE_SIZE];
-
+            List<File> files = new List<File>();
+            int count = 0;
             SafeFileHandle handle = PInvoke.CreateFile(@"\\.\C:", //grabbing a handle to the C: volume
             (uint)GenericAccessRights.GENERIC_READ,
             FILE_SHARE_MODE.FILE_SHARE_WRITE | FILE_SHARE_MODE.FILE_SHARE_READ,
@@ -289,9 +290,9 @@ namespace File_Search_App
 
                 CalculateLengthAndOffset(dataRun, dataRunPosition, mftFile, out uint length, out uint offset);
 
-                int filesRemaining = (int)length * bytesPerCluster / MFT_FILE_SIZE;
-
                 clusterNum += offset;
+
+                int filesRemaining = (int)length * bytesPerCluster / MFT_FILE_SIZE;
                 long bufferPosition = 0;
 
                 while (filesRemaining > 0)
@@ -302,6 +303,8 @@ namespace File_Search_App
 
                     if (filesRemaining < MFT_FILES_PER_BUFFER)
                         filesToLoad = filesRemaining;
+
+                    count += filesToLoad;
 
                     ReadHandle(handle,
                         mftBuffer,
@@ -316,7 +319,7 @@ namespace File_Search_App
                         int fileRecordPosition = MFT_FILE_SIZE * i;
 
                         FileRecordHeader file =
-                            BytesToStruct<FileRecordHeader>(mftBuffer[fileRecordPosition..(fileRecordPosition + sizeof(FileRecordHeader))]);
+                            BytesToStruct<FileRecordHeader>(mftBuffer[fileRecordPosition..(fileRecordPosition + Marshal.SizeOf(typeof(FileRecordHeader)))]);
                         recordsProcessed++;
 
                         Debug.Assert(file.magicNum == 0x454C4946);
@@ -324,15 +327,18 @@ namespace File_Search_App
                         if ((file.flags & (ushort)FileRecordFlags.InUse) != 1)
                             continue;
 
+
+
                         int attributePosition = fileRecordPosition + file.firstAttributeOffset;
 
-                        AttributeHeader attribute = BytesToStruct<AttributeHeader>(mftBuffer[attributePosition..(attributePosition + sizeof(AttributeHeader))]);
+                        AttributeHeader attribute = BytesToStruct<AttributeHeader>(mftBuffer[attributePosition..(attributePosition + Marshal.SizeOf(typeof(AttributeHeader)))]);
 
                         while (attributePosition - fileRecordPosition < MFT_FILE_SIZE)
                         {
 
                             if (attribute.attributeType == (uint)AttributeTypes.FileName)
                             {
+
                                 int fileNameAttributeSize = attributePosition + Marshal.SizeOf(typeof(FileNameAttributeHeader));
                                 FileNameAttributeHeader fileNameAttribute = BytesToStruct<FileNameAttributeHeader>(mftBuffer[attributePosition..fileNameAttributeSize]);
 
@@ -342,9 +348,14 @@ namespace File_Search_App
 
                                     fileData.parent = fileNameAttribute.GetParentRecordNumber();
 
-                                    //figure out filename
+                                    int fileNameStart = fileNameAttributeSize - 1;
+                                    int fileNameEnd = fileNameStart + fileNameAttribute.fileNameLength * 2;
 
+                                    char[] chars = Encoding.Unicode.GetString(mftBuffer[fileNameStart..fileNameEnd]).ToCharArray();
 
+                                    fileData.fileName = new string(chars);
+
+                                    files.Add(fileData);                                    
                                 }
                             }
                             else if (attribute.attributeType == (uint)AttributeTypes.EndMarker)
@@ -352,19 +363,17 @@ namespace File_Search_App
                                 break;
                             }
 
-                            //get filenames so can figure out if grabbing properly
-
                             attributePosition += (int)attribute.length;
-                            int attributeSize = attributePosition + sizeof(AttributeHeader);
+                            int attributeSize = attributePosition + Marshal.SizeOf(typeof(AttributeHeader));
 
-                            if ((uint)attributePosition < mftBuffer.Length - 1)
+                            if ((uint)attributePosition < mftBuffer.Length - 1) //attributePos can get so large it overflows int, so we convert to uint
                             {
                                 attribute = BytesToStruct<AttributeHeader>(mftBuffer[attributePosition..attributeSize]);
                             }
                             else
                             {
-                                attributePosition = mftBuffer.Length - 1 - sizeof(AttributeHeader);
-                                attributeSize = attributePosition + sizeof(AttributeHeader);
+                                attributePosition = mftBuffer.Length - 1 - Marshal.SizeOf(typeof(AttributeHeader));
+                                attributeSize = attributePosition + Marshal.SizeOf(typeof(AttributeHeader));
                                 attribute = BytesToStruct<AttributeHeader>(mftBuffer[attributePosition..attributeSize]);
                             }
 
@@ -375,11 +384,15 @@ namespace File_Search_App
 
                     }
 
-                    dataRunPosition += dataRun.GetRunLength() + dataRun.GetRunOffset() + 1;
-                    dataRun = BytesToStruct<RunHeader>(mftFile[dataRunPosition..^0]);
+
                 }
 
+                dataRunPosition += dataRun.GetRunLength() + dataRun.GetRunOffset() + 1;
+                dataRun = BytesToStruct<RunHeader>(mftFile[dataRunPosition..^0]);
+
             }
+
+            Debug.WriteLine("Files + Folders Accessed: " + count);
 
             handle.Close();
         }
@@ -531,13 +544,6 @@ namespace File_Search_App
 
                 PInvoke.ReadFile((Windows.Win32.Foundation.HANDLE)handle.DangerousGetHandle(),
                     bufferPtr, count, &bytesAccessed, null);
-
-                if (bytesAccessed != count)
-                {
-                    Debug.WriteLine("Bytes accessed not equal to count");
-                    Debug.WriteLine("Count: " + count);
-                    Debug.WriteLine("Bytes accessed: " + bytesAccessed);
-                }
             }
         }
     }
