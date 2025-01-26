@@ -31,7 +31,10 @@ namespace File_Search_App.ViewModels
         }
 
         [RelayCommand]
-        private void ScanFiles() => Files = new ObservableCollection<MFTHandler.FileInfo>(MFTHandler.GetDriveFiles());
+        private async Task ScanFiles()
+        {
+            Files = new ObservableCollection<MFTHandler.FileInfo>(await Task.Run(()=> MFTHandler.GetDriveFiles()));
+        }
 
 
 
