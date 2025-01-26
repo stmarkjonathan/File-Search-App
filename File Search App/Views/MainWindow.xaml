@@ -8,13 +8,27 @@
         d:DataContext="{d:DesignInstance Type=viewmodels:MainWindowViewModel}"
         Title="MainWindow" Height="450" Width="800">
     <Grid>
-        <ListView d:ItemsSource="{d:SampleData ItemCount=5}" ItemsSource="{Binding Names}" Margin="58,32,58,31">
-            <ListView.View>
-                <GridView>
-                    <GridViewColumn/>
-                </GridView>
-            </ListView.View>
-        </ListView>
 
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Button Grid.Row="0" Height="30" Command="{Binding ScanFilesCommand}">Scan</Button>
+
+        <DataGrid d:ItemsSource="{d:SampleData ItemCount=5}" 
+                  ItemsSource="{Binding Files, UpdateSourceTrigger=PropertyChanged}"
+                  Grid.Row="1"
+                  IsReadOnly="True"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  CanUserSortColumns="False">
+            <DataGrid.Columns>
+                <DataGridTextColumn Width="*" Binding="{Binding fileName}"></DataGridTextColumn>
+            </DataGrid.Columns>
+            
+        </DataGrid>
+    
     </Grid>
 </Window>

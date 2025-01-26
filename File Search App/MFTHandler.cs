@@ -1,24 +1,11 @@
 ﻿using Microsoft.Win32.SafeHandles;
-using System;
-using System.Collections;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
+
 using System.Data;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Reflection;
-using System.Reflection.Metadata;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Text;
-using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Navigation;
-using System.Xml.Linq;
 using Windows.Win32;
 using Windows.Win32.Storage.FileSystem;
-using static File_Search_App.MFTHandler;
 
 namespace File_Search_App
 {
@@ -228,30 +215,27 @@ namespace File_Search_App
                 return recordNum;
             }
         }
-
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        struct File
+        public struct FileInfo
         {
-            public ulong parent;
-            public string fileName;
+            public ulong parentIndex {  get; set; }
+            public ulong fileIndex { get; set; }
+            public string fileName { get; set; }
+
+            public override string ToString()
+            {
+                return fileName;
+            }
         }
 
         #endregion
 
         const int MFT_FILE_SIZE = 1024;
         const int MFT_FILES_PER_BUFFER = 65536;
-
-        public MFTHandler()
-        {
-            foo();
-            Debug.WriteLine("DONE");
-        }
-
-        public void foo()
+        public static List<FileInfo> GetDriveFiles()
         {
 
             byte[] mftFile = new byte[MFT_FILE_SIZE];
-            List<File> files = new List<File>();
+            List<FileInfo> files = new List<FileInfo>();
             int count = 0;
             SafeFileHandle handle = PInvoke.CreateFile(@"\\.\C:", //grabbing a handle to the C: volume
             (uint)GenericAccessRights.GENERIC_READ,
@@ -267,11 +251,11 @@ namespace File_Search_App
 
             ReadHandle(handle, mftFile, (long)bootSector.mftStart * bytesPerCluster, MFT_FILE_SIZE); // grab the first 1kb of the MFT
 
-            FileRecordHeader fileRecord = FindMFTFileRecord(handle, bootSector, mftFile, bytesPerCluster);
+            FileRecordHeader mftRecord = FindMFTFileRecord(handle, bootSector, mftFile, bytesPerCluster);
 
             NonResidentAttributeHeader dataAttribute =
                 FindDataAttribute(mftFile,
-                fileRecord.firstAttributeOffset,
+                mftRecord.firstAttributeOffset,
                 out int dataAttributePosition,
                 out ulong approximateRecordCount);
 
@@ -318,18 +302,18 @@ namespace File_Search_App
                     {
                         int fileRecordPosition = MFT_FILE_SIZE * i;
 
-                        FileRecordHeader file =
+                        FileRecordHeader fileRecord =
                             BytesToStruct<FileRecordHeader>(mftBuffer[fileRecordPosition..(fileRecordPosition + Marshal.SizeOf(typeof(FileRecordHeader)))]);
                         recordsProcessed++;
 
-                        Debug.Assert(file.magicNum == 0x454C4946);
+                        Debug.Assert(fileRecord.magicNum == 0x454C4946);
 
-                        if ((file.flags & (ushort)FileRecordFlags.InUse) != 1)
+                        if ((fileRecord.flags & (ushort)FileRecordFlags.InUse) != 1)
                             continue;
 
 
 
-                        int attributePosition = fileRecordPosition + file.firstAttributeOffset;
+                        int attributePosition = fileRecordPosition + fileRecord.firstAttributeOffset;
 
                         AttributeHeader attribute = BytesToStruct<AttributeHeader>(mftBuffer[attributePosition..(attributePosition + Marshal.SizeOf(typeof(AttributeHeader)))]);
 
@@ -344,18 +328,19 @@ namespace File_Search_App
 
                                 if (fileNameAttribute.namespaceType != 2 && fileNameAttribute.nonResident == 0)
                                 {
-                                    File fileData = new File();
+                                    FileInfo file = new FileInfo();
 
-                                    fileData.parent = fileNameAttribute.GetParentRecordNumber();
+                                    file.parentIndex = fileNameAttribute.GetParentRecordNumber();
+                                    file.fileIndex = fileRecord.recordNum;
 
                                     int fileNameStart = fileNameAttributeSize - 1;
                                     int fileNameEnd = fileNameStart + fileNameAttribute.fileNameLength * 2;
 
                                     char[] chars = Encoding.Unicode.GetString(mftBuffer[fileNameStart..fileNameEnd]).ToCharArray();
 
-                                    fileData.fileName = new string(chars);
+                                    file.fileName = new string(chars);
 
-                                    files.Add(fileData);                                    
+                                    files.Add(file);
                                 }
                             }
                             else if (attribute.attributeType == (uint)AttributeTypes.EndMarker)
@@ -395,9 +380,13 @@ namespace File_Search_App
             Debug.WriteLine("Files + Folders Accessed: " + count);
 
             handle.Close();
+
+            files.OrderBy(f => f.fileIndex);
+
+            return files;
         }
 
-        private void CalculateLengthAndOffset(RunHeader dataRun, int dataRunPosition, byte[] mftFile, out uint length, out uint offset)
+        private static void CalculateLengthAndOffset(RunHeader dataRun, int dataRunPosition, byte[] mftFile, out uint length, out uint offset)
         {
             length = 0;
             offset = 0;
@@ -421,7 +410,7 @@ namespace File_Search_App
             }
         }
 
-        private FileRecordHeader FindMFTFileRecord(SafeFileHandle handle, BootSector bootSector, byte[] mftFile, int bytesPerCluster)
+        private static FileRecordHeader FindMFTFileRecord(SafeFileHandle handle, BootSector bootSector, byte[] mftFile, int bytesPerCluster)
         {
 
             FileRecordHeader fileRecord = BytesToStruct<FileRecordHeader>(mftFile);
@@ -431,7 +420,7 @@ namespace File_Search_App
             return fileRecord;
         }
 
-        private BootSector GetBootSector(SafeFileHandle handle)
+        private static BootSector GetBootSector(SafeFileHandle handle)
         {
 
             BootSector bootSector = new BootSector();
@@ -445,7 +434,7 @@ namespace File_Search_App
             return bootSector;
         }
 
-        private NonResidentAttributeHeader FindDataAttribute(byte[] mftFile, int filePosition, out int dataAttributePosition, out ulong approximateRecordCount)
+        private static NonResidentAttributeHeader FindDataAttribute(byte[] mftFile, int filePosition, out int dataAttributePosition, out ulong approximateRecordCount)
         {
 
             AttributeHeader attribute = BytesToStruct<AttributeHeader>(mftFile[filePosition..^0]);
@@ -482,7 +471,7 @@ namespace File_Search_App
         /// </summary>
         /// <param name="bootSector">The BootSector struct to be converted into an array of bytes</param>
         /// <returns></returns>
-        private byte[] StructToBytes<T>(T str)
+        private static byte[] StructToBytes<T>(T str)
         {
             int size = Marshal.SizeOf(str);
             byte[] arr = new byte[size];
@@ -503,7 +492,7 @@ namespace File_Search_App
         /// </summary>
         /// <param name="bytes">The array of bytes to be converted into a struct</param>
         /// <returns></returns>
-        private T BytesToStruct<T>(byte[] bytes) where T : new()
+        private static T BytesToStruct<T>(byte[] bytes) where T : new()
         {
 
             T str = new T();
@@ -533,7 +522,7 @@ namespace File_Search_App
         /// <param name="buffer">The buffer that receives the read bytes from the device</param>
         /// <param name="from">The starting position of the file pointer for the device</param>
         /// <param name="count">The count of bytes to be read from the device</param>
-        private unsafe void ReadHandle(SafeFileHandle handle, byte[] buffer,
+        private static unsafe void ReadHandle(SafeFileHandle handle, byte[] buffer,
             long from, uint count)
         {
             fixed (byte* bufferPtr = buffer)

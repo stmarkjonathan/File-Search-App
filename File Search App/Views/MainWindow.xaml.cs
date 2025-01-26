@@ -22,5 +22,6 @@ namespace File_Search_App
             DataContext = new MainWindowViewModel();
             InitializeComponent();
         }
+
     }
 }
