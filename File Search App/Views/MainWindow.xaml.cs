@@ -17,11 +17,22 @@ namespace File_Search_App
     /// </summary>
     public partial class MainWindow : Window
     {
+
+
+        MainWindowViewModel ViewModel;
         public MainWindow()
         {
-            DataContext = new MainWindowViewModel();
+
+            DataContext = ViewModel = new MainWindowViewModel();
             InitializeComponent();
         }
 
+        private async void TextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {         
+            List<MFTHandler.FileData> list = new List<MFTHandler.FileData>(await Task.Run(() =>  ViewModel.SearchFiles() ));
+
+            FilesDataGrid.ItemsSource = list;  
+
+        }
     }
 }

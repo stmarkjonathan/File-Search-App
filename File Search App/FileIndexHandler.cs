@@ -16,7 +16,10 @@ namespace File_Search_App
 
             foreach(MFTHandler.FileData file in files)
             {
-                fileIndex[file.FilePath] = file;
+                if(file != null)
+                {
+                    fileIndex[file.FilePath] = file;
+                }              
             }
 
             return fileIndex;

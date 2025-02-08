@@ -19,32 +19,66 @@ namespace File_Search_App.ViewModels
 {
     internal partial class MainWindowViewModel : ObservableObject
     {
-        [ObservableProperty]
-        public ObservableCollection<MFTHandler.FileData> files;
 
         private Dictionary<string, MFTHandler.FileData> fileIndex;
 
+        public List<MFTHandler.FileData> Files;
+
+        [ObservableProperty]
+        private ObservableCollection<MFTHandler.FileData> displayList;
+
+        [ObservableProperty]
+        private string searchQuery;
+
         public MainWindowViewModel()
         {
-            Files = new ObservableCollection<MFTHandler.FileData>();
+            Files = new List<MFTHandler.FileData>();
 
-            Files.Add(new MFTHandler.FileData() { FileIndex=0, FileName="File 1", ParentIndex=0});
-            Files.Add(new MFTHandler.FileData() { FileIndex = 1, FileName = "File 2", ParentIndex = 0 });
-            Files.Add(new MFTHandler.FileData() { FileIndex = 2, FileName = "File 3", ParentIndex = 1 });
+            Files.Add(new MFTHandler.FileData() { FileIndex = 0, FileName = "File 1", FilePath="File 1", ParentIndex = 0 });
+            Files.Add(new MFTHandler.FileData() { FileIndex = 1, FileName = "File 2", FilePath = "File 2", ParentIndex = 0 });
+            Files.Add(new MFTHandler.FileData() { FileIndex = 2, FileName = "File 3", FilePath = "File 3", ParentIndex = 1 });
+
+            DisplayList = new ObservableCollection<MFTHandler.FileData>(Files);
+
+            fileIndex = FileIndexHandler.IndexFiles(Files);
         }
 
         [RelayCommand]
         private async Task ScanFiles()
         {
-            Files = new ObservableCollection<MFTHandler.FileData>(await Task.Run(()=> MFTHandler.GetDriveFiles().Values));
-            fileIndex = FileIndexHandler.IndexFiles(Files.ToList());
+            Files = new List<MFTHandler.FileData>(await Task.Run(() => MFTHandler.GetDriveFiles().Values));
+            DisplayFiles(Files);
+            fileIndex = FileIndexHandler.IndexFiles(Files);
         }
 
-        
+        public List<MFTHandler.FileData> SearchFiles()
+        {
+
+            List<MFTHandler.FileData> foundFiles = new List<MFTHandler.FileData>();
+            
+            if (!String.IsNullOrWhiteSpace(SearchQuery))
+            {
+
+                foreach (MFTHandler.FileData file in fileIndex.Values)
+                {
+                    if (file.FileName.IndexOf(SearchQuery, StringComparison.OrdinalIgnoreCase) != -1)
+                    {
+                        foundFiles.Add(file);
+                    }
+                }
+            }
+
+            return foundFiles;
+        }
+
+        private void DisplayFiles(List<MFTHandler.FileData> files)
+        {
+            DisplayList = new ObservableCollection<MFTHandler.FileData>(files);
+        }
 
 
 
-        
+
 
 
     }

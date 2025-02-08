@@ -21,20 +21,35 @@
                  Margin="0,5,0,5" 
                  Height="30" 
                  BorderBrush="Gray"
+                 TextChanged="TextBox_TextChanged"
+                 Text="{Binding SearchQuery,UpdateSourceTrigger=PropertyChanged}"
                  ></TextBox>
 
-        <DataGrid d:ItemsSource="{d:SampleData ItemCount=5}" 
-                  ItemsSource="{Binding Files, UpdateSourceTrigger=PropertyChanged}"
+        <DataGrid x:Name="FilesDataGrid"
+                  d:ItemsSource="{d:SampleData ItemCount=5}" 
+                  ItemsSource="{Binding DisplayList, UpdateSourceTrigger=PropertyChanged}"
                   Grid.Row="2"
                   IsReadOnly="True"
                   AutoGenerateColumns="False"
                   CanUserAddRows="False"
                   CanUserDeleteRows="False"
                   CanUserSortColumns="False">
+
             <DataGrid.Columns>
-                <DataGridTextColumn Width="*" Binding="{Binding FilePath}"></DataGridTextColumn>
+                <DataGridTemplateColumn Width="*">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding FilePath}"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
             </DataGrid.Columns>
             
+            
+            
+            
+           
+          
         </DataGrid>
     
     </Grid>
