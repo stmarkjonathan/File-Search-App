@@ -55,6 +55,15 @@ namespace File_Search_App.ViewModels
         }
 
         [RelayCommand]
+        private void OpenFile()
+        {
+            if (SelectedFile != null)
+            {
+                Process.Start("explorer.exe", SelectedFile.FilePath);
+            }
+        }
+
+        [RelayCommand]
         private void OpenFileLocation()
         {
             if (SelectedFile != null)

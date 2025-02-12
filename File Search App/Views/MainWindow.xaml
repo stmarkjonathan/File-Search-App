@@ -46,10 +46,13 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
             </DataGrid.Columns>
-
+    
             <DataGrid.ContextMenu>
                 <ContextMenu>
-                    <MenuItem Header="Open in File Explorer"
+                    <MenuItem Header="Open File"
+                              Command="{Binding OpenFileCommand}">
+                    </MenuItem>
+                    <MenuItem Header="Open File Location"
                               Command="{Binding OpenFileLocationCommand}">
                     </MenuItem>
                 </ContextMenu>
