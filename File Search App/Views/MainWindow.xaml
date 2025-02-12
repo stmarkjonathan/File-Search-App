@@ -28,6 +28,7 @@
         <DataGrid x:Name="FilesDataGrid"
                   d:ItemsSource="{d:SampleData ItemCount=5}" 
                   ItemsSource="{Binding DisplayList, UpdateSourceTrigger=PropertyChanged}"
+                  SelectedItem="{Binding SelectedFile}"
                   Grid.Row="2"
                   IsReadOnly="True"
                   AutoGenerateColumns="False"
@@ -35,8 +36,9 @@
                   CanUserDeleteRows="False"
                   CanUserSortColumns="False">
 
+            
             <DataGrid.Columns>
-                <DataGridTemplateColumn Width="*">
+                <DataGridTemplateColumn>
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding FilePath}"/>
@@ -44,6 +46,14 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
             </DataGrid.Columns>
+
+            <DataGrid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Open in File Explorer"
+                              Command="{Binding OpenFileLocationCommand}">
+                    </MenuItem>
+                </ContextMenu>
+            </DataGrid.ContextMenu>
             
             
             

@@ -30,6 +30,9 @@ namespace File_Search_App.ViewModels
         [ObservableProperty]
         private string searchQuery;
 
+        [ObservableProperty]
+        private MFTHandler.FileData selectedFile;
+
         public MainWindowViewModel()
         {
             Files = new List<MFTHandler.FileData>();
@@ -49,6 +52,15 @@ namespace File_Search_App.ViewModels
             Files = new List<MFTHandler.FileData>(await Task.Run(() => MFTHandler.GetDriveFiles().Values));
             DisplayFiles(Files);
             fileIndex = FileIndexHandler.IndexFiles(Files);
+        }
+
+        [RelayCommand]
+        private void OpenFileLocation()
+        {
+            if (SelectedFile != null)
+            {
+                Process.Start("explorer.exe", "/select,"+ SelectedFile.FilePath);
+            }            
         }
 
         public List<MFTHandler.FileData> SearchFiles()
@@ -75,6 +87,8 @@ namespace File_Search_App.ViewModels
         {
             DisplayList = new ObservableCollection<MFTHandler.FileData>(files);
         }
+
+        
 
 
 
