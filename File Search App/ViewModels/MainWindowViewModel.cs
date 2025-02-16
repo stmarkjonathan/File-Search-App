@@ -22,10 +22,13 @@ namespace File_Search_App.ViewModels
 
         private Dictionary<string, MFTHandler.FileData> fileIndex;
 
-        public List<MFTHandler.FileData> Files;
+        public List<MFTHandler.FileData> filesList;
 
         [ObservableProperty]
         private ObservableCollection<MFTHandler.FileData> displayList;
+
+        [ObservableProperty]
+        private ObservableCollection<string> driveNames;
 
         [ObservableProperty]
         private string searchQuery;
@@ -33,31 +36,37 @@ namespace File_Search_App.ViewModels
         [ObservableProperty]
         private MFTHandler.FileData selectedFile;
 
+        [ObservableProperty]
+        private string selectedDrive;
+
         public MainWindowViewModel()
         {
-            Files = new List<MFTHandler.FileData>();
+            filesList = new List<MFTHandler.FileData>();
 
-            Files.Add(new MFTHandler.FileData() { FileIndex = 0, FileName = "File 1", FilePath="File 1", ParentIndex = 0 });
-            Files.Add(new MFTHandler.FileData() { FileIndex = 1, FileName = "File 2", FilePath = "File 2", ParentIndex = 0 });
-            Files.Add(new MFTHandler.FileData() { FileIndex = 2, FileName = "File 3", FilePath = "File 3", ParentIndex = 1 });
+            filesList.Add(new MFTHandler.FileData() { FileIndex = 0, FileName = "File 1", FilePath="File 1", ParentIndex = 0 });
+            filesList.Add(new MFTHandler.FileData() { FileIndex = 1, FileName = "File 2", FilePath = "File 2", ParentIndex = 0 });
+            filesList.Add(new MFTHandler.FileData() { FileIndex = 2, FileName = "File 3", FilePath = "File 3", ParentIndex = 1 });
 
-            DisplayList = new ObservableCollection<MFTHandler.FileData>(Files);
+            displayList = new ObservableCollection<MFTHandler.FileData>(filesList);
 
-            fileIndex = FileIndexHandler.IndexFiles(Files);
+            fileIndex = FileIndexHandler.IndexFiles(filesList);
+
+            driveNames = new ObservableCollection<string>(GetDriveNames());
+            selectedDrive = driveNames[0];
         }
 
         [RelayCommand]
         private async Task ScanFiles()
         {
-            Files = new List<MFTHandler.FileData>(await Task.Run(() => MFTHandler.GetDriveFiles().Values));
-            DisplayFiles(Files);
-            fileIndex = FileIndexHandler.IndexFiles(Files);
+            filesList = new List<MFTHandler.FileData>(await Task.Run(() => MFTHandler.GetDriveFiles(SelectedDrive).Values));
+            DisplayFiles(filesList);
+            fileIndex = FileIndexHandler.IndexFiles(filesList);
         }
 
         [RelayCommand]
         private void OpenFile()
         {
-            if (SelectedFile != null)
+            if (SelectedFile != null) 
             {
                 Process.Start("explorer.exe", SelectedFile.FilePath);
             }
@@ -97,12 +106,17 @@ namespace File_Search_App.ViewModels
             DisplayList = new ObservableCollection<MFTHandler.FileData>(files);
         }
 
-        
+        private List<string> GetDriveNames()
+        {
+            DriveInfo[] drives = DriveInfo.GetDrives();
+            List<string> driveList = new List<string>();
 
+            foreach (var drive in drives)
+            {
+                driveList.Add(drive.Name);
+            }
 
-
-
-
-
+            return driveList;
+        }
     }
 }

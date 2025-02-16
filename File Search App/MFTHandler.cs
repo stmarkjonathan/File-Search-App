@@ -240,12 +240,13 @@ namespace File_Search_App
 
         const int MFT_FILE_SIZE = 1024;
         const int MFT_FILES_PER_BUFFER = 65536;
-        public static Dictionary<ulong, FileData> GetDriveFiles()
+        public static Dictionary<ulong, FileData> GetDriveFiles(string driveName)
         {
 
             byte[] mftFile = new byte[MFT_FILE_SIZE];
-            int count = 0;
-            SafeFileHandle handle = PInvoke.CreateFile(@"\\.\C:", //grabbing a handle to the C: volume
+            
+
+            SafeFileHandle handle = PInvoke.CreateFile(ConvertDriveName(driveName), //grabbing a handle to the C: volume
             (uint)GenericAccessRights.GENERIC_READ,
             FILE_SHARE_MODE.FILE_SHARE_WRITE | FILE_SHARE_MODE.FILE_SHARE_READ,
             null,
@@ -328,7 +329,7 @@ namespace File_Search_App
                         int attributePosition = fileRecordPosition + fileRecord.firstAttributeOffset;
 
                         AttributeHeader attribute = BytesToStruct<AttributeHeader>(mftBuffer[attributePosition..(attributePosition + Marshal.SizeOf(typeof(AttributeHeader)))]);
-
+                        //Debug.Assert(fileRecord.recordNum != 895908);
                         while (attributePosition - fileRecordPosition < MFT_FILE_SIZE)
                         {
 
@@ -336,7 +337,6 @@ namespace File_Search_App
                             {
                                 int fileNameAttributeSize = attributePosition + Marshal.SizeOf(typeof(FileNameAttributeHeader));
                                 FileNameAttributeHeader fileNameAttribute = BytesToStruct<FileNameAttributeHeader>(mftBuffer[attributePosition..fileNameAttributeSize]);
-
                                 if (fileNameAttribute.nonResident == 0)
                                 {
                                     FileData file = GetFileData(fileNameAttribute, fileRecord, attributePosition, mftBuffer);
@@ -416,7 +416,7 @@ namespace File_Search_App
         {
             string filePath = "";
 
-            FileData parentFile = filesDict[file.ParentIndex];
+            FileData parentFile = filesDict[file.ParentIndex]; //895908
 
             if (file.FileIndex == file.ParentIndex)
             {
@@ -590,6 +590,12 @@ namespace File_Search_App
                 PInvoke.ReadFile((Windows.Win32.Foundation.HANDLE)handle.DangerousGetHandle(),
                     bufferPtr, count, &bytesAccessed, null);
             }
+        }
+
+        private static string ConvertDriveName(string driveName) //ensure format for name is "\\.\X:" for CreateFile
+        {
+            //driveName format will be "X:\"
+            return @"\\.\" + driveName.Remove(driveName.Length - 1);
         }
     }
 }

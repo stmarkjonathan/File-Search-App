@@ -15,7 +15,16 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <Button Grid.Row="0" Height="30" Command="{Binding ScanFilesCommand}">Scan</Button>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="1" Height="30" Command="{Binding ScanFilesCommand}">Scan</Button>
+            <ComboBox ItemsSource="{Binding DriveNames}" SelectedValue="{Binding SelectedDrive}"></ComboBox>
+        </Grid>    
+        
+        
 
         <TextBox Grid.Row="1" 
                  Margin="0,5,0,5" 
@@ -36,15 +45,10 @@
                   CanUserDeleteRows="False"
                   CanUserSortColumns="False">
 
-            
+
             <DataGrid.Columns>
-                <DataGridTemplateColumn>
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding FilePath}"/>
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="File Name" Width="*" Binding="{Binding FileName}"></DataGridTextColumn>
+                <DataGridTextColumn Header="File Path" Width="*" Binding="{Binding FilePath}"></DataGridTextColumn>
             </DataGrid.Columns>
     
             <DataGrid.ContextMenu>
