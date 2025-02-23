@@ -47,10 +47,17 @@
 
 
             <DataGrid.Columns>
+                <DataGridTemplateColumn>
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Image Source="{Binding FileIcon}"></Image>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="File Name" Width="*" Binding="{Binding FileName}"></DataGridTextColumn>
                 <DataGridTextColumn Header="File Path" Width="*" Binding="{Binding FilePath}"></DataGridTextColumn>
             </DataGrid.Columns>
-    
+
             <DataGrid.ContextMenu>
                 <ContextMenu>
                     <MenuItem Header="Open File"

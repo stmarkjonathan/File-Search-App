@@ -1,18 +1,14 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using File_Search_App.Models;
-using Microsoft.Win32;
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
-using System.Linq;
-using System.Reflection.Metadata;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
-using System.Xml.Linq;
+using System.Runtime.CompilerServices;
+using System.Windows;
+using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 
 namespace File_Search_App.ViewModels
@@ -43,7 +39,7 @@ namespace File_Search_App.ViewModels
         {
             filesList = new List<MFTHandler.FileData>();
 
-            filesList.Add(new MFTHandler.FileData() { FileIndex = 0, FileName = "File 1", FilePath="File 1", ParentIndex = 0 });
+            filesList.Add(new MFTHandler.FileData() { FileIndex = 0, FileName = "File 1", FilePath = "File 1", ParentIndex = 0 });
             filesList.Add(new MFTHandler.FileData() { FileIndex = 1, FileName = "File 2", FilePath = "File 2", ParentIndex = 0 });
             filesList.Add(new MFTHandler.FileData() { FileIndex = 2, FileName = "File 3", FilePath = "File 3", ParentIndex = 1 });
 
@@ -60,13 +56,15 @@ namespace File_Search_App.ViewModels
         {
             filesList = new List<MFTHandler.FileData>(await Task.Run(() => MFTHandler.GetDriveFiles(SelectedDrive).Values));
             DisplayFiles(filesList);
+            SetFileIcons(filesList);
             fileIndex = FileIndexHandler.IndexFiles(filesList);
+
         }
 
         [RelayCommand]
         private void OpenFile()
         {
-            if (SelectedFile != null) 
+            if (SelectedFile != null)
             {
                 Process.Start("explorer.exe", SelectedFile.FilePath);
             }
@@ -77,15 +75,15 @@ namespace File_Search_App.ViewModels
         {
             if (SelectedFile != null)
             {
-                Process.Start("explorer.exe", "/select,"+ SelectedFile.FilePath);
-            }            
+                Process.Start("explorer.exe", "/select," + SelectedFile.FilePath);
+            }
         }
 
         public List<MFTHandler.FileData> SearchFiles()
         {
 
             List<MFTHandler.FileData> foundFiles = new List<MFTHandler.FileData>();
-            
+
             if (!String.IsNullOrWhiteSpace(SearchQuery))
             {
 
@@ -117,6 +115,24 @@ namespace File_Search_App.ViewModels
             }
 
             return driveList;
+        }
+
+        private void SetFileIcons(List<MFTHandler.FileData> fileList)
+        {
+            foreach (var file in fileList)
+            {
+               //use win32 extract icons
+            }
+        }
+
+        private ImageSource IconToImageSource(Icon icon)
+        {
+            ImageSource imageSource = Imaging.CreateBitmapSourceFromHIcon(
+                icon.Handle,
+                Int32Rect.Empty,
+                BitmapSizeOptions.FromEmptyOptions());
+
+            return imageSource;
         }
     }
 }

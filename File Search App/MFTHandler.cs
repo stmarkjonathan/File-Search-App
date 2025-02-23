@@ -2,10 +2,12 @@
 
 using System.Data;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Input;
+using System.Windows.Media;
 using Windows.Win32;
 using Windows.Win32.Storage.FileSystem;
 
@@ -52,6 +54,7 @@ namespace File_Search_App
 
         enum AttributeTypes : uint
         {
+            AttributeList = 0x20,
             FileName = 0x30,
             Data = 0x80,
             BitMap = 0xB0,
@@ -227,6 +230,13 @@ namespace File_Search_App
             public ulong FileIndex { get; set; }
             public string FileName { get; set; }
             public string FilePath { get; set; }
+            public ImageSource FileIcon { get; set; }
+
+            public FileData()
+            {
+                FileName = "";
+                FilePath = "";
+            }
 
             public override string ToString()
             {
@@ -319,56 +329,21 @@ namespace File_Search_App
                         {
                             continue;
                         }
+
                         
-
-
                         Debug.Assert(fileRecord.magicNum == 0x454C4946);
+       
+                        List<FileData> fileList = GetFileRecordNames(mftBuffer, fileRecord, out int attributePosition, fileRecordPosition);
 
-
-
-                        int attributePosition = fileRecordPosition + fileRecord.firstAttributeOffset;
-
-                        AttributeHeader attribute = BytesToStruct<AttributeHeader>(mftBuffer[attributePosition..(attributePosition + Marshal.SizeOf(typeof(AttributeHeader)))]);
-                        //Debug.Assert(fileRecord.recordNum != 895908);
-                        while (attributePosition - fileRecordPosition < MFT_FILE_SIZE)
+                        foreach(var file in fileList)
                         {
-
-                            if (attribute.attributeType == (uint)AttributeTypes.FileName)
+                            if (!file.Equals(default(FileData)))
                             {
-                                int fileNameAttributeSize = attributePosition + Marshal.SizeOf(typeof(FileNameAttributeHeader));
-                                FileNameAttributeHeader fileNameAttribute = BytesToStruct<FileNameAttributeHeader>(mftBuffer[attributePosition..fileNameAttributeSize]);
-                                if (fileNameAttribute.nonResident == 0)
-                                {
-                                    FileData file = GetFileData(fileNameAttribute, fileRecord, attributePosition, mftBuffer);
-
-                                    filesDict[file.FileIndex] = file;
-
-                                }
+                                filesDict[file.FileIndex] = file;
                             }
-                            else if (attribute.attributeType == (uint)AttributeTypes.EndMarker)
-                            {
-                                break;
-                            }
-
-                            attributePosition += (int)attribute.length;
-                            int attributeEnd = attributePosition + Marshal.SizeOf(typeof(AttributeHeader));
-
-                            if ((uint)attributePosition < mftBuffer.Length - 1) //attributePos can get so large it overflows int, so we convert to uint
-                            {
-                                attribute = BytesToStruct<AttributeHeader>(mftBuffer[attributePosition..attributeEnd]);
-                            }
-                            else
-                            {
-                                attributePosition = mftBuffer.Length - 1 - Marshal.SizeOf(typeof(AttributeHeader));
-                                attributeEnd = attributePosition + Marshal.SizeOf(typeof(AttributeHeader));
-                                attribute = BytesToStruct<AttributeHeader>(mftBuffer[attributePosition..attributeEnd]);
-                                break;
-                            }
-
-
-
-
                         }
+                        
+                       
 
                     }
                 }
@@ -504,9 +479,9 @@ namespace File_Search_App
 
             dataAttributePosition = 0;
 
-            while (attribute.attributeType != (uint)AttributeTypes.EndMarker) // 0xFFFFFFFF is the end marker for the attributes
+            while (attribute.attributeType != (uint)AttributeTypes.EndMarker) 
             {
-                if (attribute.attributeType == (uint)AttributeTypes.Data) // $DATA attribute
+                if (attribute.attributeType == (uint)AttributeTypes.Data)
                 {
                     dataAttribute = BytesToStruct<NonResidentAttributeHeader>(mftFile[filePosition..^0]);
                     dataAttributePosition = filePosition;
@@ -522,10 +497,61 @@ namespace File_Search_App
             return dataAttribute;
         }
 
+        private static List<FileData> GetFileRecordNames(byte[] mftBuffer, FileRecordHeader fileRecord, out int attributePosition, int fileRecordPosition)
+        {
+
+            attributePosition = fileRecordPosition + fileRecord.firstAttributeOffset;
+
+            AttributeHeader attribute = BytesToStruct<AttributeHeader>(mftBuffer[attributePosition..(attributePosition + Marshal.SizeOf(typeof(AttributeHeader)))]);
+            FileNameAttributeHeader fileNameAttribute = new FileNameAttributeHeader();
+            List<FileData> fileList = new List<FileData>();
+
+            while (attributePosition - fileRecordPosition < MFT_FILE_SIZE)
+            {
+
+                if (attribute.attributeType == (uint)AttributeTypes.FileName)
+                {
+                    int fileNameAttributeSize = attributePosition + Marshal.SizeOf(typeof(FileNameAttributeHeader));
+                    fileNameAttribute = BytesToStruct<FileNameAttributeHeader>(mftBuffer[attributePosition..fileNameAttributeSize]);
+
+                    if (!fileNameAttribute.Equals(default(FileNameAttributeHeader)) && fileNameAttribute.nonResident == 0)
+                    {
+                        fileList.Add(GetFileData(fileNameAttribute, fileRecord, attributePosition, mftBuffer));
+                    }
+                }
+                else if(attribute.attributeType == (uint)AttributeTypes.AttributeList)
+                {
+
+                }
+                else if (attribute.attributeType == (uint)AttributeTypes.EndMarker)
+                {
+                    break;
+                }
+
+                attributePosition += (int)attribute.length;
+                int attributeEnd = attributePosition + Marshal.SizeOf(typeof(AttributeHeader));
+
+                if ((uint)attributePosition < mftBuffer.Length - 1) //attributePos can get so large it overflows int, so we convert to uint
+                {
+                    attribute = BytesToStruct<AttributeHeader>(mftBuffer[attributePosition..attributeEnd]);
+                }
+                else
+                {
+                    attributePosition = mftBuffer.Length - 1 - Marshal.SizeOf(typeof(AttributeHeader));
+                    attributeEnd = attributePosition + Marshal.SizeOf(typeof(AttributeHeader));
+                    attribute = BytesToStruct<AttributeHeader>(mftBuffer[attributePosition..attributeEnd]);
+                    break;
+                }
+            }
+
+            return fileList;
+
+        }
+
         /// <summary>
-        /// Converts a BootSector struct into an array of bytes
+        /// Converts a chosen struct into an array of bytes
         /// </summary>
-        /// <param name="bootSector">The BootSector struct to be converted into an array of bytes</param>
+        /// <param name="str">The struct to be converted into an array of bytes</param>
         /// <returns></returns>
         private static byte[] StructToBytes<T>(T str)
         {
@@ -544,7 +570,7 @@ namespace File_Search_App
         }
 
         /// <summary>
-        /// Converts an array of bytes to a BootSector struct.
+        /// Converts an array of bytes to a chosen struct.
         /// </summary>
         /// <param name="bytes">The array of bytes to be converted into a struct</param>
         /// <returns></returns>
