@@ -64,7 +64,7 @@ namespace File_Search_App
         #region Structs 
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct BootSector
+        private struct BootSector
         {
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
             public byte[] jump;
@@ -96,7 +96,7 @@ namespace File_Search_App
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct FileRecordHeader
+        private struct FileRecordHeader
         {
             public uint magicNum;
             public ushort updateSequenceOffset;
@@ -115,7 +115,7 @@ namespace File_Search_App
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct AttributeHeader
+        private struct AttributeHeader
         {
             public uint attributeType;
             public uint length;
@@ -127,7 +127,7 @@ namespace File_Search_App
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        struct ResidentAttributeHeader
+        private struct ResidentAttributeHeader
         {
             public uint attributeType;
             public uint length;
@@ -143,7 +143,7 @@ namespace File_Search_App
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        struct NonResidentAttributeHeader
+        private struct NonResidentAttributeHeader
         {
             public uint attributeType;
             public uint length;
@@ -177,7 +177,7 @@ namespace File_Search_App
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        struct FileNameAttributeHeader
+        private struct FileNameAttributeHeader
         {
             public uint attributeType;
             public uint length;
@@ -206,7 +206,7 @@ namespace File_Search_App
             public byte fileNameLength;
             public byte namespaceType;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
-            public char[] fileName;
+            public char[] namePlaceholder;
 
             public ulong GetParentRecordNumber()
             {
@@ -224,6 +224,24 @@ namespace File_Search_App
                 return BitConverter.ToUInt64(array, 0);
             }
         }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        private struct AttributeListEntry
+        {
+            public uint attributeType;
+            public ushort attributeSize;
+            public byte attributeNameLength;
+            public byte attributeNameOffset;
+            public ulong clusterNum;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)]
+            byte[] mftIndexNumber;
+            public ushort sequenceNumber;
+            public ushort attributeId;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
+            public char[] namePlaceholder;
+        }
+
+
         public class FileData
         {
             public ulong ParentIndex { get; set; }
@@ -256,7 +274,7 @@ namespace File_Search_App
             byte[] mftFile = new byte[MFT_FILE_SIZE];
             
 
-            SafeFileHandle handle = PInvoke.CreateFile(ConvertDriveName(driveName), //grabbing a handle to the C: volume
+            SafeFileHandle handle = PInvoke.CreateFile(ConvertDriveName(driveName), //grabbing a handle to selected drive volume
             (uint)GenericAccessRights.GENERIC_READ,
             FILE_SHARE_MODE.FILE_SHARE_WRITE | FILE_SHARE_MODE.FILE_SHARE_READ,
             null,
@@ -353,7 +371,7 @@ namespace File_Search_App
 
             }
 
-            filesDict[5].FileName = "C:"; //changing the root directory (always 5th index) name from "." to "C:"
+            filesDict[5].FileName = driveName.Substring(0, driveName.Length-1);
 
             foreach (var file in filesDict.Values)
             {
@@ -391,7 +409,7 @@ namespace File_Search_App
         {
             string filePath = "";
 
-            FileData parentFile = filesDict[file.ParentIndex]; //895908
+            FileData parentFile = filesDict[file.ParentIndex]; 
 
             if (file.FileIndex == file.ParentIndex)
             {
@@ -522,6 +540,31 @@ namespace File_Search_App
                 else if(attribute.attributeType == (uint)AttributeTypes.AttributeList)
                 {
 
+                    int attributeListStart = attributePosition;
+                    int attributeListEnd = 0;
+
+                    if (attribute.nonResident == 0)
+                    {
+
+                        int residentEnd = attributePosition + Marshal.SizeOf(typeof(ResidentAttributeHeader));
+                        ResidentAttributeHeader residentAttribute = BytesToStruct<ResidentAttributeHeader>(mftBuffer[attributePosition..residentEnd]);
+
+                        attributeListStart += residentAttribute.attributeOffset;
+                        attributeListEnd = attributeListStart + Marshal.SizeOf(typeof(AttributeListEntry));
+
+                        uint listSize = residentAttribute.attributeLength;
+
+                        while (listSize > 0)
+                        {
+                          
+                            AttributeListEntry entry = BytesToStruct<AttributeListEntry>(mftBuffer[attributeListStart..attributeListEnd]);
+                             
+                            attributeListStart += entry.attributeSize;
+                            attributeListEnd = attributeListStart + Marshal.SizeOf(typeof(AttributeListEntry));
+                            listSize -= entry.attributeSize;                          
+                        }
+                    }
+                   
                 }
                 else if (attribute.attributeType == (uint)AttributeTypes.EndMarker)
                 {
