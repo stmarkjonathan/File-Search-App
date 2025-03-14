@@ -4,8 +4,6 @@ using System.Data;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
-using System.Printing.IndexedProperties;
-using System.Reflection.Metadata;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Input;
@@ -110,9 +108,7 @@ namespace File_Search_App
             public ushort flags;
             public uint realSize;
             public uint allocatedSize;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)]
-            byte[] baseRecordNumber;
-            public ushort baseSequenceNum;
+            public ulong fileReference;
             public ushort nextAttributeID;
             public ushort unused;
             public uint recordNum;
@@ -214,6 +210,13 @@ namespace File_Search_App
 
             public ulong GetParentRecordNumber()
             {
+                //ulong recordNum = 0;
+
+                //for (int i = 0; i < parentRecordNumber.Length; i++)
+                //{
+                //    recordNum |= ((ulong)parentRecordNumber[i]) >> (8 * i);
+                //}
+
                 byte[] array = new byte[8];
 
                 Array.Copy(parentRecordNumber, array, 6);
@@ -229,22 +232,13 @@ namespace File_Search_App
             public ushort attributeSize;
             public byte attributeNameLength;
             public byte attributeNameOffset;
-            public ulong vcn;
+            public ulong clusterNum;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)]
-            byte[] baseRecordNumber;
+            byte[] mftIndexNumber;
             public ushort sequenceNumber;
             public ushort attributeId;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1)]
             public char[] namePlaceholder;
-
-            public ulong GetBaseRecordNumber()
-            {
-                byte[] array = new byte[8];
-
-                Array.Copy(baseRecordNumber, array, 6);
-
-                return BitConverter.ToUInt64(array, 0);
-            }
         }
 
 
@@ -274,20 +268,19 @@ namespace File_Search_App
 
         const int MFT_FILE_SIZE = 1024;
         const int MFT_FILES_PER_BUFFER = 65536;
-
-        static string volumeName = "";
         public static Dictionary<ulong, FileData> GetDriveFiles(string driveName)
         {
 
-            volumeName = driveName;
-
             byte[] mftFile = new byte[MFT_FILE_SIZE];
+            
 
-            Dictionary<ulong, Tuple<ulong, int>> fileRecordLocations = new Dictionary<ulong, Tuple<ulong, int>>();
-
-            List<ulong> attributeListRecords = new List<ulong>();
-
-            SafeFileHandle handle = GetDriveHandle(volumeName);
+            SafeFileHandle handle = PInvoke.CreateFile(ConvertDriveName(driveName), //grabbing a handle to selected drive volume
+            (uint)GenericAccessRights.GENERIC_READ,
+            FILE_SHARE_MODE.FILE_SHARE_WRITE | FILE_SHARE_MODE.FILE_SHARE_READ,
+            null,
+            FILE_CREATION_DISPOSITION.OPEN_EXISTING,
+            0,
+            null);
 
             BootSector bootSector = GetBootSector(handle);
 
@@ -311,6 +304,7 @@ namespace File_Search_App
 
             ulong clusterNum = 0;
             byte[] mftBuffer = new byte[MFT_FILES_PER_BUFFER * MFT_FILE_SIZE];
+            ulong recordsProcessed = 0;
 
             while ((dataRunPosition - dataAttributePosition) < dataAttribute.length
                 && dataRun.GetRunLength() > 0)
@@ -325,6 +319,8 @@ namespace File_Search_App
 
                 while (filesRemaining > 0)
                 {
+
+                    Debug.Assert(filesRemaining > 0);
 
                     ulong filesToLoad = MFT_FILES_PER_BUFFER;
 
@@ -342,27 +338,30 @@ namespace File_Search_App
                     for (ulong i = 0; i < filesToLoad; i++)
                     {
                         int fileRecordPosition = MFT_FILE_SIZE * (int)i;
-                        ulong bufferStart = clusterNum * bytesPerCluster + bufferPosition;
 
                         FileRecordHeader fileRecord =
                             BytesToStruct<FileRecordHeader>(mftBuffer[fileRecordPosition..(fileRecordPosition + Marshal.SizeOf(typeof(FileRecordHeader)))]);
+                        recordsProcessed++;
 
                         if ((fileRecord.flags & (ushort)FileRecordFlags.InUse) != 1)
                         {
                             continue;
                         }
 
-                        fileRecordLocations[fileRecord.recordNum] = Tuple.Create<ulong, int>(bufferStart, fileRecordPosition);
-
+                        
                         Debug.Assert(fileRecord.magicNum == 0x454C4946);
+       
+                        List<FileData> fileList = GetFileRecordNames(mftBuffer, fileRecord, out int attributePosition, fileRecordPosition);
 
-                        FileData file = GetFileNameAttribute(mftBuffer, attributeListRecords, fileRecord, fileRecordPosition);
-
-                        if (!file.Equals(default(FileData)))
+                        foreach(var file in fileList)
                         {
-                            filesDict[file.FileIndex] = file;
+                            if (!file.Equals(default(FileData)))
+                            {
+                                filesDict[file.FileIndex] = file;
+                            }
                         }
-
+                        
+                       
 
                     }
                 }
@@ -372,19 +371,7 @@ namespace File_Search_App
 
             }
 
-            filesDict[5].FileName = driveName.Substring(0, driveName.Length - 1);
-
-            foreach (var recordNumber in attributeListRecords)
-            {
-
-                //we dont rlly need to look for different file records
-                //just find out why extension records arent being scanned
-                //cross reference file record to kcall 
-                ulong bufferStart = fileRecordLocations[recordNumber].Item1;
-                int recordPos = fileRecordLocations[recordNumber].Item2;
-
-                FileRecordHeader fileRecord = GetFileRecord(GetDriveHandle(volumeName), (long)bufferStart, (uint)recordPos);
-            }
+            filesDict[5].FileName = driveName.Substring(0, driveName.Length-1);
 
             foreach (var file in filesDict.Values)
             {
@@ -422,7 +409,7 @@ namespace File_Search_App
         {
             string filePath = "";
 
-            FileData parentFile = filesDict[file.ParentIndex];
+            FileData parentFile = filesDict[file.ParentIndex]; 
 
             if (file.FileIndex == file.ParentIndex)
             {
@@ -510,7 +497,7 @@ namespace File_Search_App
 
             dataAttributePosition = 0;
 
-            while (attribute.attributeType != (uint)AttributeTypes.EndMarker)
+            while (attribute.attributeType != (uint)AttributeTypes.EndMarker) 
             {
                 if (attribute.attributeType == (uint)AttributeTypes.Data)
                 {
@@ -528,15 +515,14 @@ namespace File_Search_App
             return dataAttribute;
         }
 
-        private static FileData GetFileNameAttribute(byte[] mftBuffer, List<ulong> attributeListRecords, FileRecordHeader fileRecord, int fileRecordPosition)
+        private static List<FileData> GetFileRecordNames(byte[] mftBuffer, FileRecordHeader fileRecord, out int attributePosition, int fileRecordPosition)
         {
-            int attributePosition = fileRecordPosition + fileRecord.firstAttributeOffset;
-            int attributeListPosition = 0;
-            bool hasAttributeList = false;
+
+            attributePosition = fileRecordPosition + fileRecord.firstAttributeOffset;
 
             AttributeHeader attribute = BytesToStruct<AttributeHeader>(mftBuffer[attributePosition..(attributePosition + Marshal.SizeOf(typeof(AttributeHeader)))]);
             FileNameAttributeHeader fileNameAttribute = new FileNameAttributeHeader();
-            FileData file = new FileData();
+            List<FileData> fileList = new List<FileData>();
 
             while (attributePosition - fileRecordPosition < MFT_FILE_SIZE)
             {
@@ -548,15 +534,37 @@ namespace File_Search_App
 
                     if (!fileNameAttribute.Equals(default(FileNameAttributeHeader)) && fileNameAttribute.nonResident == 0)
                     {
-                        file = GetFileData(fileNameAttribute, fileRecord, attributePosition, mftBuffer);        
+                        fileList.Add(GetFileData(fileNameAttribute, fileRecord, attributePosition, mftBuffer));
                     }
-
-                    return file;
                 }
-                else if (attribute.attributeType == (uint)AttributeTypes.AttributeList)
+                else if(attribute.attributeType == (uint)AttributeTypes.AttributeList)
                 {
-                    hasAttributeList = true;
-                    attributeListPosition = attributePosition;                  
+
+                    int attributeListStart = attributePosition;
+                    int attributeListEnd = 0;
+
+                    if (attribute.nonResident == 0)
+                    {
+
+                        int residentEnd = attributePosition + Marshal.SizeOf(typeof(ResidentAttributeHeader));
+                        ResidentAttributeHeader residentAttribute = BytesToStruct<ResidentAttributeHeader>(mftBuffer[attributePosition..residentEnd]);
+
+                        attributeListStart += residentAttribute.attributeOffset;
+                        attributeListEnd = attributeListStart + Marshal.SizeOf(typeof(AttributeListEntry));
+
+                        uint listSize = residentAttribute.attributeLength;
+
+                        while (listSize > 0)
+                        {
+                          
+                            AttributeListEntry entry = BytesToStruct<AttributeListEntry>(mftBuffer[attributeListStart..attributeListEnd]);
+                             
+                            attributeListStart += entry.attributeSize;
+                            attributeListEnd = attributeListStart + Marshal.SizeOf(typeof(AttributeListEntry));
+                            listSize -= entry.attributeSize;                          
+                        }
+                    }
+                   
                 }
                 else if (attribute.attributeType == (uint)AttributeTypes.EndMarker)
                 {
@@ -579,49 +587,8 @@ namespace File_Search_App
                 }
             }
 
-            if (hasAttributeList)
-            {
-                FindAttributeListFileName(mftBuffer, attribute, attributeListRecords, fileRecord.recordNum, attributeListPosition);
-            }
+            return fileList;
 
-            return file;
-
-        }
-
-        private static void FindAttributeListFileName(byte[] mftBuffer, AttributeHeader attribute, List<ulong> attributeListRecords, ulong fileRecordNumber, int attributePosition)
-        {
-            int attributeListStart = attributePosition;
-            int attributeListEnd = 0;
-
-            if (attribute.nonResident == 0)
-            {
-                int residentEnd = attributePosition + Marshal.SizeOf(typeof(ResidentAttributeHeader));
-                ResidentAttributeHeader residentAttribute = BytesToStruct<ResidentAttributeHeader>(mftBuffer[attributePosition..residentEnd]);
-
-                attributeListStart += residentAttribute.attributeOffset;
-                attributeListEnd = attributeListStart + Marshal.SizeOf(typeof(AttributeListEntry));
-
-                uint listSize = residentAttribute.attributeLength;
-
-                while (listSize > 0)
-                {
-                    AttributeListEntry entry = BytesToStruct<AttributeListEntry>(mftBuffer[attributeListStart..attributeListEnd]);
-
-                    if (entry.attributeType == (uint)AttributeTypes.FileName)
-                    {
-                        if (entry.GetBaseRecordNumber() != fileRecordNumber)
-                        {
-                            attributeListRecords.Add(entry.GetBaseRecordNumber());
-                            break;
-                        }
-                    }
-                    attributeListStart += entry.attributeSize;
-                    attributeListEnd = attributeListStart + Marshal.SizeOf(typeof(AttributeListEntry));
-                    listSize -= entry.attributeSize;
-                }
-
-
-            }
         }
 
         /// <summary>
@@ -679,7 +646,7 @@ namespace File_Search_App
         /// <param name="handle">A handle to the device that will be read.</param>
         /// <param name="buffer">The buffer that receives the read bytes from the device</param>
         /// <param name="from">The starting position of the file pointer for the device</param>
-        /// <param name="count">The amount of bytes to be read from the device</param>
+        /// <param name="count">The count of bytes to be read from the device</param>
         private static unsafe void ReadHandle(SafeFileHandle handle, byte[] buffer,
             long from, uint count)
         {
@@ -694,34 +661,10 @@ namespace File_Search_App
             }
         }
 
-        private static FileRecordHeader GetFileRecord(SafeFileHandle driveHandle, long startPos, uint recordPos)
-        {
-            byte[] buffer = new byte[MFT_FILE_SIZE];
-
-            ReadHandle(driveHandle, buffer, startPos + recordPos, MFT_FILE_SIZE);
-
-            FileRecordHeader fileRecord = BytesToStruct<FileRecordHeader>(buffer);
-
-            return fileRecord;
-        }
-
         private static string ConvertDriveName(string driveName) //ensure format for name is "\\.\X:" for CreateFile
         {
             //driveName format will be "X:\"
             return @"\\.\" + driveName.Remove(driveName.Length - 1);
-        }
-
-        private static SafeFileHandle GetDriveHandle(string driveName)
-        {
-            SafeFileHandle handle = PInvoke.CreateFile(ConvertDriveName(driveName), //grabbing a handle to selected drive volume
-           (uint)GenericAccessRights.GENERIC_READ,
-           FILE_SHARE_MODE.FILE_SHARE_WRITE | FILE_SHARE_MODE.FILE_SHARE_READ,
-           null,
-           FILE_CREATION_DISPOSITION.OPEN_EXISTING,
-           0,
-           null);
-
-            return handle;
         }
     }
 }
