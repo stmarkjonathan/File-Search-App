@@ -415,6 +415,12 @@ namespace File_Search_App
                 parentFile = filesDict[extensionRecordNums[file.ParentIndex]];
             }
             
+            //fast, but only pulls up DOS names, not normal ones
+            //if we exclude dos names, slow because constantly catching key not found
+
+            //maybe hasAttributeList + fileFound where fileFound only if not namespacetype DOS?
+
+            //cuz we shouldnt be going in the attribute list unless we can find a non-DOS filename attribute
 
             if (file.FileIndex == file.ParentIndex)
             {
@@ -525,13 +531,14 @@ namespace File_Search_App
             int attributePosition = fileRecordPosition + fileRecord.firstAttributeOffset;
             int attributeListPosition = 0;
             bool hasAttributeList = false;
+            bool fileNameFound = false;
 
             AttributeHeader attribute = BytesToStruct<AttributeHeader>(mftBuffer[attributePosition..(attributePosition + Marshal.SizeOf(typeof(AttributeHeader)))]);
             FileNameAttributeHeader fileNameAttribute = new FileNameAttributeHeader();
             ResidentAttributeHeader attributeListAttribute = new ResidentAttributeHeader();
             FileData file = new FileData();
 
-            while (attributePosition - fileRecordPosition < MFT_FILE_SIZE)
+            while (attributePosition - fileRecordPosition < MFT_FILE_SIZE && !fileNameFound)
             {
 
                 if (attribute.attributeType == (uint)AttributeTypes.FileName)
@@ -539,12 +546,15 @@ namespace File_Search_App
                     int fileNameAttributeSize = attributePosition + Marshal.SizeOf(typeof(FileNameAttributeHeader));
                     fileNameAttribute = BytesToStruct<FileNameAttributeHeader>(mftBuffer[attributePosition..fileNameAttributeSize]);
 
+                    if(fileNameAttribute.namespaceType != 2)
+                    {
+                        fileNameFound = true;
+                    }
+
                     if (!fileNameAttribute.Equals(default(FileNameAttributeHeader)) && fileNameAttribute.nonResident == 0)
                     {
                         file = GetFileData(fileNameAttribute, fileRecord, attributePosition, mftBuffer);
                     }
-
-                    return file;
                 }
                 else if (attribute.attributeType == (uint)AttributeTypes.AttributeList)
                 {
@@ -574,7 +584,7 @@ namespace File_Search_App
                 }
             }
 
-            if (hasAttributeList)
+            if (hasAttributeList && !fileNameFound)
             {
                 FindAttributeListFileName(mftBuffer, attributeListAttribute, extensionRecordNums, fileRecord.recordNum, attributeListPosition);
             }
