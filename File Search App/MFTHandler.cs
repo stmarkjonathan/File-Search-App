@@ -283,7 +283,7 @@ namespace File_Search_App
 
             byte[] mftFile = new byte[MFT_FILE_SIZE];
 
-            List<ulong> attributeListRecords = new List<ulong>();
+            Dictionary<ulong, ulong> extensionRecordNums = new Dictionary<ulong, ulong>();
 
             SafeFileHandle handle = GetDriveHandle(volumeName);
 
@@ -352,7 +352,7 @@ namespace File_Search_App
 
                         Debug.Assert(fileRecord.magicNum == 0x454C4946);
 
-                        FileData file = GetFileNameAttribute(mftBuffer, attributeListRecords, fileRecord, fileRecordPosition);
+                        FileData file = GetFileNameAttribute(mftBuffer, extensionRecordNums, fileRecord, fileRecordPosition);
 
                         if (!file.Equals(default(FileData)))
                         {
@@ -374,7 +374,7 @@ namespace File_Search_App
             {
                 if (file != null)
                 {
-                    file.FilePath = GetFilePath(file);
+                    file.FilePath = GetFilePath(file, extensionRecordNums);
                 }
 
             }
@@ -402,11 +402,19 @@ namespace File_Search_App
             return file;
         }
 
-        private static string GetFilePath(FileData file)
+        private static string GetFilePath(FileData file, Dictionary<ulong, ulong> extensionRecordNums)
         {
             string filePath = "";
-
-            FileData parentFile = filesDict[file.ParentIndex];
+            FileData parentFile;
+            try
+            {
+                parentFile = filesDict[file.ParentIndex];
+            }
+            catch (KeyNotFoundException) // find real base file record of parent file record
+            {
+                parentFile = filesDict[extensionRecordNums[file.ParentIndex]];
+            }
+            
 
             if (file.FileIndex == file.ParentIndex)
             {
@@ -420,7 +428,7 @@ namespace File_Search_App
                 return filePath;
             }
 
-            filePath += GetFilePath(parentFile);
+            filePath += GetFilePath(parentFile, extensionRecordNums);
 
 
 
@@ -512,7 +520,7 @@ namespace File_Search_App
             return dataAttribute;
         }
 
-        private static FileData GetFileNameAttribute(byte[] mftBuffer, List<ulong> attributeListRecords, FileRecordHeader fileRecord, int fileRecordPosition)
+        private static FileData GetFileNameAttribute(byte[] mftBuffer, Dictionary<ulong, ulong> extensionRecordNums, FileRecordHeader fileRecord, int fileRecordPosition)
         {
             int attributePosition = fileRecordPosition + fileRecord.firstAttributeOffset;
             int attributeListPosition = 0;
@@ -568,25 +576,25 @@ namespace File_Search_App
 
             if (hasAttributeList)
             {
-                FindAttributeListFileName(mftBuffer, attributeListAttribute, attributeListRecords, fileRecord.recordNum, attributeListPosition);
+                FindAttributeListFileName(mftBuffer, attributeListAttribute, extensionRecordNums, fileRecord.recordNum, attributeListPosition);
             }
 
             return file;
 
         }
 
-        private static void FindAttributeListFileName(byte[] mftBuffer, ResidentAttributeHeader attributeList, List<ulong> attributeListRecords, ulong fileRecordNumber, int attributePosition)
+        private static void FindAttributeListFileName(byte[] mftBuffer, ResidentAttributeHeader attributeListAttribute, Dictionary<ulong, ulong> extensionRecordNums, ulong fileRecordNumber, int attributePosition)
         {
             int attributeListStart = attributePosition;
             int attributeListEnd = 0;
 
 
-            attributeListStart += attributeList.attributeOffset;
+            attributeListStart += attributeListAttribute.attributeOffset;
             attributeListEnd = attributeListStart + Marshal.SizeOf(typeof(AttributeListEntry));
 
-            if(attributeList.nonResident == 0)
+            if(attributeListAttribute.nonResident == 0)
             {
-                uint listSize = attributeList.attributeLength;
+                uint listSize = attributeListAttribute.attributeLength;
 
                 while (listSize > 0)
                 {
@@ -596,7 +604,7 @@ namespace File_Search_App
                     {
                         if (entry.GetBaseRecordNumber() != fileRecordNumber)
                         {
-                            attributeListRecords.Add(entry.GetBaseRecordNumber());
+                            extensionRecordNums[fileRecordNumber] = entry.GetBaseRecordNumber();
                             break;
                         }
                     }
