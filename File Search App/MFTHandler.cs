@@ -283,8 +283,6 @@ namespace File_Search_App
 
             byte[] mftFile = new byte[MFT_FILE_SIZE];
 
-            Dictionary<ulong, Tuple<ulong, int>> fileRecordLocations = new Dictionary<ulong, Tuple<ulong, int>>();
-
             List<ulong> attributeListRecords = new List<ulong>();
 
             SafeFileHandle handle = GetDriveHandle(volumeName);
@@ -352,8 +350,6 @@ namespace File_Search_App
                             continue;
                         }
 
-                        fileRecordLocations[fileRecord.recordNum] = Tuple.Create<ulong, int>(bufferStart, fileRecordPosition);
-
                         Debug.Assert(fileRecord.magicNum == 0x454C4946);
 
                         FileData file = GetFileNameAttribute(mftBuffer, attributeListRecords, fileRecord, fileRecordPosition);
@@ -373,18 +369,6 @@ namespace File_Search_App
             }
 
             filesDict[5].FileName = driveName.Substring(0, driveName.Length - 1);
-
-            foreach (var recordNumber in attributeListRecords)
-            {
-
-                //we dont rlly need to look for different file records
-                //just find out why extension records arent being scanned
-                //cross reference file record to kcall 
-                ulong bufferStart = fileRecordLocations[recordNumber].Item1;
-                int recordPos = fileRecordLocations[recordNumber].Item2;
-
-                FileRecordHeader fileRecord = GetFileRecord(GetDriveHandle(volumeName), (long)bufferStart, (uint)recordPos);
-            }
 
             foreach (var file in filesDict.Values)
             {
@@ -536,6 +520,7 @@ namespace File_Search_App
 
             AttributeHeader attribute = BytesToStruct<AttributeHeader>(mftBuffer[attributePosition..(attributePosition + Marshal.SizeOf(typeof(AttributeHeader)))]);
             FileNameAttributeHeader fileNameAttribute = new FileNameAttributeHeader();
+            ResidentAttributeHeader attributeListAttribute = new ResidentAttributeHeader();
             FileData file = new FileData();
 
             while (attributePosition - fileRecordPosition < MFT_FILE_SIZE)
@@ -548,7 +533,7 @@ namespace File_Search_App
 
                     if (!fileNameAttribute.Equals(default(FileNameAttributeHeader)) && fileNameAttribute.nonResident == 0)
                     {
-                        file = GetFileData(fileNameAttribute, fileRecord, attributePosition, mftBuffer);        
+                        file = GetFileData(fileNameAttribute, fileRecord, attributePosition, mftBuffer);
                     }
 
                     return file;
@@ -556,7 +541,9 @@ namespace File_Search_App
                 else if (attribute.attributeType == (uint)AttributeTypes.AttributeList)
                 {
                     hasAttributeList = true;
-                    attributeListPosition = attributePosition;                  
+                    attributeListPosition = attributePosition;
+                    int attributeListSize = attributePosition + Marshal.SizeOf(typeof(ResidentAttributeHeader));
+                    attributeListAttribute = BytesToStruct<ResidentAttributeHeader>(mftBuffer[attributePosition..attributeListSize]);
                 }
                 else if (attribute.attributeType == (uint)AttributeTypes.EndMarker)
                 {
@@ -581,27 +568,25 @@ namespace File_Search_App
 
             if (hasAttributeList)
             {
-                FindAttributeListFileName(mftBuffer, attribute, attributeListRecords, fileRecord.recordNum, attributeListPosition);
+                FindAttributeListFileName(mftBuffer, attributeListAttribute, attributeListRecords, fileRecord.recordNum, attributeListPosition);
             }
 
             return file;
 
         }
 
-        private static void FindAttributeListFileName(byte[] mftBuffer, AttributeHeader attribute, List<ulong> attributeListRecords, ulong fileRecordNumber, int attributePosition)
+        private static void FindAttributeListFileName(byte[] mftBuffer, ResidentAttributeHeader attributeList, List<ulong> attributeListRecords, ulong fileRecordNumber, int attributePosition)
         {
             int attributeListStart = attributePosition;
             int attributeListEnd = 0;
 
-            if (attribute.nonResident == 0)
+
+            attributeListStart += attributeList.attributeOffset;
+            attributeListEnd = attributeListStart + Marshal.SizeOf(typeof(AttributeListEntry));
+
+            if(attributeList.nonResident == 0)
             {
-                int residentEnd = attributePosition + Marshal.SizeOf(typeof(ResidentAttributeHeader));
-                ResidentAttributeHeader residentAttribute = BytesToStruct<ResidentAttributeHeader>(mftBuffer[attributePosition..residentEnd]);
-
-                attributeListStart += residentAttribute.attributeOffset;
-                attributeListEnd = attributeListStart + Marshal.SizeOf(typeof(AttributeListEntry));
-
-                uint listSize = residentAttribute.attributeLength;
+                uint listSize = attributeList.attributeLength;
 
                 while (listSize > 0)
                 {
@@ -619,10 +604,10 @@ namespace File_Search_App
                     attributeListEnd = attributeListStart + Marshal.SizeOf(typeof(AttributeListEntry));
                     listSize -= entry.attributeSize;
                 }
-
-
             }
         }
+
+           
 
         /// <summary>
         /// Converts a chosen struct into an array of bytes
