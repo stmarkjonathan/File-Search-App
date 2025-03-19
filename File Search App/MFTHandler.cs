@@ -13,6 +13,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using Windows.Win32;
 using Windows.Win32.Storage.FileSystem;
+using static File_Search_App.MFTHandler;
 
 namespace File_Search_App
 {
@@ -280,7 +281,7 @@ namespace File_Search_App
 
         #endregion
         
-        public static Dictionary<ulong, FileData> GetDriveFiles(string driveName, int fileCount = 0) // if filecount 0, read all
+        public static Dictionary<ulong, FileData> GetDriveFiles(string driveName, int dataRunCount = 1) // dataRunCount is the amount of dataruns to read. 0 means all
         {
 
             volumeName = driveName;
@@ -306,7 +307,7 @@ namespace File_Search_App
             RunHeader dataRun = BytesToStruct<RunHeader>
                 (mftFile[dataRunPosition..^0]);
 
-            EnumerateDataRuns(dataRun, dataAttribute, bytesPerCluster, mftFile, dataRunPosition, dataAttributePosition);
+            EnumerateDataRuns(dataRun, dataAttribute, bytesPerCluster, mftFile, dataRunPosition, dataAttributePosition, dataRunCount);
 
             filesDict[5].FileName = driveName.Substring(0, driveName.Length - 1);
 
@@ -339,19 +340,24 @@ namespace File_Search_App
             return mftFile;
         }
 
-        private static void EnumerateDataRuns(RunHeader dataRun, NonResidentAttributeHeader dataAttribute, ulong bytesPerCluster,  byte[] mftFile, int dataRunPosition, int dataAttributePosition)
+        private static void EnumerateDataRuns(RunHeader dataRun, NonResidentAttributeHeader dataAttribute, ulong bytesPerCluster,  byte[] mftFile, int dataRunPosition, int dataAttributePosition, int dataRunCount)
         {
+            int count = 0;
             ulong clusterNum = 0;
             byte[] mftBuffer = new byte[MFT_FILES_PER_BUFFER * MFT_FILE_SIZE];
 
             while ((dataRunPosition - dataAttributePosition) < dataAttribute.length
                 && dataRun.GetRunLength() > 0)
             {
+                
+                if(count >= dataRunCount && dataRunCount != 0)
+                {
+                    break;
+                }
 
                 CalculateLengthAndOffset(dataRun, dataRunPosition, mftFile, out ulong length, out ulong offset);
 
                 clusterNum += offset;
-
                 ulong filesRemaining = length * bytesPerCluster / MFT_FILE_SIZE;
                 ulong bufferPosition = 0;
 
@@ -399,6 +405,7 @@ namespace File_Search_App
 
                 dataRunPosition += dataRun.GetRunLength() + dataRun.GetRunOffset() + 1;
                 dataRun = BytesToStruct<RunHeader>(mftFile[dataRunPosition..^0]);
+                count++;
 
             }
         }
@@ -423,39 +430,45 @@ namespace File_Search_App
 
         private static string GetFilePath(FileData file, Dictionary<ulong, ulong> extensionRecordNums)
         {
+            
             string filePath = "";
-            FileData parentFile;
-            try
-            {
-                parentFile = filesDict[file.ParentIndex];
-            }
-            catch (KeyNotFoundException) // find real base file record of parent file record
-            {
-                parentFile = filesDict[extensionRecordNums[file.ParentIndex]];
-            }
+            ulong fallbackParent;
+            FileData? parentFile;
 
-            if (file.FileIndex == file.ParentIndex)
+            extensionRecordNums.TryGetValue(file.ParentIndex, out fallbackParent);
+
+            bool isParentFound =
+                filesDict.TryGetValue(file.ParentIndex, out parentFile) ||  
+                filesDict.TryGetValue(fallbackParent, out parentFile);
+
+            if (isParentFound && parentFile != null)
             {
-                filePath = file.FileName;
+                if (file.FileIndex == file.ParentIndex)
+                {
+                    filePath = file.FileName;
+                    return filePath;
+                }
+
+                if (!String.IsNullOrEmpty(parentFile.FilePath))
+                {
+                    filePath = parentFile.FilePath + "\\" + file.FileName;
+                    return filePath;
+                }
+
+                filePath += GetFilePath(parentFile, extensionRecordNums);
+
+
+
+
+                filePath += "\\" + file.FileName;
+
                 return filePath;
             }
-
-            if (!String.IsNullOrEmpty(parentFile.FilePath))
+            else
             {
-                filePath = parentFile.FilePath + "\\" + file.FileName;
-                return filePath;
+                return file.FileName;
             }
-
-            filePath += GetFilePath(parentFile, extensionRecordNums);
-
-
-
-
-            filePath += "\\" + file.FileName;
-
-            return filePath;
-
-
+               
         }
 
 
