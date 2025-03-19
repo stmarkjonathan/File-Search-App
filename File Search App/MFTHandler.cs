@@ -3,6 +3,7 @@
 using System.Data;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Printing.IndexedProperties;
 using System.Reflection.Metadata;
@@ -18,6 +19,15 @@ namespace File_Search_App
     internal class MFTHandler
     {
 
+        private static Dictionary<ulong, FileData> filesDict = new Dictionary<ulong, FileData>();
+        private static Dictionary<ulong, ulong> extensionRecordNums = new Dictionary<ulong, ulong>();
+
+        private static SafeFileHandle handle;
+
+        const int MFT_FILE_SIZE = 1024;
+        const int MFT_FILES_PER_BUFFER = 65536;
+
+        static string volumeName = "";
         enum GenericAccessRights : uint
         {
             GENERIC_ALL = 0x10000000,
@@ -269,29 +279,18 @@ namespace File_Search_App
         }
 
         #endregion
-
-        private static Dictionary<ulong, FileData> filesDict = new Dictionary<ulong, FileData>();
-
-        const int MFT_FILE_SIZE = 1024;
-        const int MFT_FILES_PER_BUFFER = 65536;
-
-        static string volumeName = "";
-        public static Dictionary<ulong, FileData> GetDriveFiles(string driveName)
+        
+        public static Dictionary<ulong, FileData> GetDriveFiles(string driveName, int fileCount = 0) // if filecount 0, read all
         {
 
             volumeName = driveName;
+            handle = GetDriveHandle(driveName);
 
-            byte[] mftFile = new byte[MFT_FILE_SIZE];
-
-            Dictionary<ulong, ulong> extensionRecordNums = new Dictionary<ulong, ulong>();
-
-            SafeFileHandle handle = GetDriveHandle(volumeName);
+            byte[] mftFile = GetMFTFileRecord();
 
             BootSector bootSector = GetBootSector(handle);
 
             ulong bytesPerCluster = (ulong)(bootSector.bytesPerSector * bootSector.sectorsPerCluster);
-
-            ReadHandle(handle, mftFile, (long)(bootSector.mftStart * bytesPerCluster), MFT_FILE_SIZE); // grab the first 1kb of the MFT
 
             FileRecordHeader mftRecord = BytesToStruct<FileRecordHeader>(mftFile);
 
@@ -307,6 +306,41 @@ namespace File_Search_App
             RunHeader dataRun = BytesToStruct<RunHeader>
                 (mftFile[dataRunPosition..^0]);
 
+            EnumerateDataRuns(dataRun, dataAttribute, bytesPerCluster, mftFile, dataRunPosition, dataAttributePosition);
+
+            filesDict[5].FileName = driveName.Substring(0, driveName.Length - 1);
+
+            foreach (var file in filesDict.Values)
+            {
+                if (file != null)
+                {
+                    file.FilePath = GetFilePath(file, extensionRecordNums);
+                }
+
+            }
+
+            handle.Close();
+
+            return filesDict;
+        }
+
+        private static byte[] GetMFTFileRecord()
+        {
+            byte[] mftFile = new byte[MFT_FILE_SIZE];
+
+            Dictionary<ulong, ulong> extensionRecordNums = new Dictionary<ulong, ulong>();
+
+            BootSector bootSector = GetBootSector(handle);
+
+            ulong bytesPerCluster = (ulong)(bootSector.bytesPerSector * bootSector.sectorsPerCluster);
+
+            ReadHandle(handle, mftFile, (long)(bootSector.mftStart * bytesPerCluster), MFT_FILE_SIZE); // grab the first 1kb of the MFT
+
+            return mftFile;
+        }
+
+        private static void EnumerateDataRuns(RunHeader dataRun, NonResidentAttributeHeader dataAttribute, ulong bytesPerCluster,  byte[] mftFile, int dataRunPosition, int dataAttributePosition)
+        {
             ulong clusterNum = 0;
             byte[] mftBuffer = new byte[MFT_FILES_PER_BUFFER * MFT_FILE_SIZE];
 
@@ -367,21 +401,6 @@ namespace File_Search_App
                 dataRun = BytesToStruct<RunHeader>(mftFile[dataRunPosition..^0]);
 
             }
-
-            filesDict[5].FileName = driveName.Substring(0, driveName.Length - 1);
-
-            foreach (var file in filesDict.Values)
-            {
-                if (file != null)
-                {
-                    file.FilePath = GetFilePath(file, extensionRecordNums);
-                }
-
-            }
-
-            handle.Close();
-
-            return filesDict;
         }
 
         private static FileData GetFileData(FileNameAttributeHeader fileNameAttribute, FileRecordHeader fileRecord, int bufferPosition, byte[] mftBuffer)
@@ -414,13 +433,6 @@ namespace File_Search_App
             {
                 parentFile = filesDict[extensionRecordNums[file.ParentIndex]];
             }
-            
-            //fast, but only pulls up DOS names, not normal ones
-            //if we exclude dos names, slow because constantly catching key not found
-
-            //maybe hasAttributeList + fileFound where fileFound only if not namespacetype DOS?
-
-            //cuz we shouldnt be going in the attribute list unless we can find a non-DOS filename attribute
 
             if (file.FileIndex == file.ParentIndex)
             {
