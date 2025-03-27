@@ -24,6 +24,10 @@ namespace File_Search_App
         private static Dictionary<ulong, ulong> extensionRecordNums = new Dictionary<ulong, ulong>();
 
         private static SafeFileHandle handle;
+        private static BootSector bootSector;
+        private static byte[] mftFile = [];
+        private static ulong bytesPerCluster;
+        private static FileRecordHeader mftRecord;
 
         const int MFT_FILE_SIZE = 1024;
         const int MFT_FILES_PER_BUFFER = 65536;
@@ -72,6 +76,16 @@ namespace File_Search_App
             Data = 0x80,
             BitMap = 0xB0,
             EndMarker = 0xFFFFFFFF,
+        }
+
+        public MFTHandler(string driveName)
+        {
+            volumeName = driveName;
+            handle = GetDriveHandle(driveName);
+            mftFile = GetMFTFileRecord();
+            bootSector = GetBootSector(handle);
+            bytesPerCluster = (ulong)(bootSector.bytesPerSector * bootSector.sectorsPerCluster);
+            mftRecord = BytesToStruct<FileRecordHeader>(mftFile);
         }
 
         #region Structs 
@@ -281,19 +295,23 @@ namespace File_Search_App
 
         #endregion
         
-        public static Dictionary<ulong, FileData> GetDriveFiles(string driveName, int dataRunCount = 1) // dataRunCount is the amount of dataruns to read. 0 means all
+        public static Dictionary<ulong, FileData> GetDriveFiles(int dataRunCount = 0) // dataRunCount is the amount of dataruns to read. 0 means all
         {
 
-            volumeName = driveName;
-            handle = GetDriveHandle(driveName);
-
-            byte[] mftFile = GetMFTFileRecord();
-
-            BootSector bootSector = GetBootSector(handle);
-
-            ulong bytesPerCluster = (ulong)(bootSector.bytesPerSector * bootSector.sectorsPerCluster);
-
-            FileRecordHeader mftRecord = BytesToStruct<FileRecordHeader>(mftFile);
+            //we know a constant to test by: files will always contain:
+            /*
+             * $MFTMirr
+             * $LogFile
+             * $Volume
+             * $AttrDef
+             * .
+             * $Bitmap
+             * $Boot
+             * $BadClus
+             * $Secure
+             * $UpCase
+             * $Extend
+             * */
 
             Debug.Assert(mftRecord.magicNum == 0x454C4946);
 
@@ -309,7 +327,7 @@ namespace File_Search_App
 
             EnumerateDataRuns(dataRun, dataAttribute, bytesPerCluster, mftFile, dataRunPosition, dataAttributePosition, dataRunCount);
 
-            filesDict[5].FileName = driveName.Substring(0, driveName.Length - 1);
+            filesDict[5].FileName = volumeName.Substring(0, volumeName.Length - 1);
 
             foreach (var file in filesDict.Values)
             {
@@ -330,8 +348,6 @@ namespace File_Search_App
             byte[] mftFile = new byte[MFT_FILE_SIZE];
 
             Dictionary<ulong, ulong> extensionRecordNums = new Dictionary<ulong, ulong>();
-
-            BootSector bootSector = GetBootSector(handle);
 
             ulong bytesPerCluster = (ulong)(bootSector.bytesPerSector * bootSector.sectorsPerCluster);
 

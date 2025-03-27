@@ -1,9 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.12.35527.113 d17.12
+VisualStudioVersion = 17.12.35527.113
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "File Search App", "File Search App\File Search App.csproj", "{C2C76812-9049-4B49-9BEC-1330B3310917}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileSearchAppTests", "FileSearchAppTests\FileSearchAppTests.csproj", "{1234E328-FCF5-4A21-A709-98EB6B317A21}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +17,10 @@ Global
 		{C2C76812-9049-4B49-9BEC-1330B3310917}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C2C76812-9049-4B49-9BEC-1330B3310917}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C2C76812-9049-4B49-9BEC-1330B3310917}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1234E328-FCF5-4A21-A709-98EB6B317A21}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1234E328-FCF5-4A21-A709-98EB6B317A21}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1234E328-FCF5-4A21-A709-98EB6B317A21}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1234E328-FCF5-4A21-A709-98EB6B317A21}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
