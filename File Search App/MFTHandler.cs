@@ -17,17 +17,13 @@ using static File_Search_App.MFTHandler;
 
 namespace File_Search_App
 {
-    internal class MFTHandler
+    public static class MFTHandler
     {
 
         private static Dictionary<ulong, FileData> filesDict = new Dictionary<ulong, FileData>();
         private static Dictionary<ulong, ulong> extensionRecordNums = new Dictionary<ulong, ulong>();
 
         private static SafeFileHandle handle;
-        private static BootSector bootSector;
-        private static byte[] mftFile = [];
-        private static ulong bytesPerCluster;
-        private static FileRecordHeader mftRecord;
 
         const int MFT_FILE_SIZE = 1024;
         const int MFT_FILES_PER_BUFFER = 65536;
@@ -76,16 +72,6 @@ namespace File_Search_App
             Data = 0x80,
             BitMap = 0xB0,
             EndMarker = 0xFFFFFFFF,
-        }
-
-        public MFTHandler(string driveName)
-        {
-            volumeName = driveName;
-            handle = GetDriveHandle(driveName);
-            mftFile = GetMFTFileRecord();
-            bootSector = GetBootSector(handle);
-            bytesPerCluster = (ulong)(bootSector.bytesPerSector * bootSector.sectorsPerCluster);
-            mftRecord = BytesToStruct<FileRecordHeader>(mftFile);
         }
 
         #region Structs 
@@ -294,8 +280,8 @@ namespace File_Search_App
         }
 
         #endregion
-        
-        public static Dictionary<ulong, FileData> GetDriveFiles(int dataRunCount = 0) // dataRunCount is the amount of dataruns to read. 0 means all
+
+        public static Dictionary<ulong, FileData> GetDriveFiles(string driveName, int dataRunCount = 0) // dataRunCount is the amount of dataruns to read. 0 means all
         {
 
             //we know a constant to test by: files will always contain:
@@ -313,6 +299,17 @@ namespace File_Search_App
              * $Extend
              * */
 
+            volumeName = driveName;
+            handle = GetDriveHandle(driveName);
+
+            byte[] mftFile = GetMFTFileRecord();
+
+            BootSector bootSector = GetBootSector(handle);
+
+            ulong bytesPerCluster = (ulong)(bootSector.bytesPerSector * bootSector.sectorsPerCluster);
+
+            FileRecordHeader mftRecord = BytesToStruct<FileRecordHeader>(mftFile);
+
             Debug.Assert(mftRecord.magicNum == 0x454C4946);
 
             NonResidentAttributeHeader dataAttribute =
@@ -327,7 +324,7 @@ namespace File_Search_App
 
             EnumerateDataRuns(dataRun, dataAttribute, bytesPerCluster, mftFile, dataRunPosition, dataAttributePosition, dataRunCount);
 
-            filesDict[5].FileName = volumeName.Substring(0, volumeName.Length - 1);
+            filesDict[5].FileName = driveName.Substring(0, driveName.Length - 1);
 
             foreach (var file in filesDict.Values)
             {
@@ -349,6 +346,8 @@ namespace File_Search_App
 
             Dictionary<ulong, ulong> extensionRecordNums = new Dictionary<ulong, ulong>();
 
+            BootSector bootSector = GetBootSector(handle);
+
             ulong bytesPerCluster = (ulong)(bootSector.bytesPerSector * bootSector.sectorsPerCluster);
 
             ReadHandle(handle, mftFile, (long)(bootSector.mftStart * bytesPerCluster), MFT_FILE_SIZE); // grab the first 1kb of the MFT
@@ -356,7 +355,7 @@ namespace File_Search_App
             return mftFile;
         }
 
-        private static void EnumerateDataRuns(RunHeader dataRun, NonResidentAttributeHeader dataAttribute, ulong bytesPerCluster,  byte[] mftFile, int dataRunPosition, int dataAttributePosition, int dataRunCount)
+        private static void EnumerateDataRuns(RunHeader dataRun, NonResidentAttributeHeader dataAttribute, ulong bytesPerCluster, byte[] mftFile, int dataRunPosition, int dataAttributePosition, int dataRunCount)
         {
             int count = 0;
             ulong clusterNum = 0;
@@ -365,8 +364,8 @@ namespace File_Search_App
             while ((dataRunPosition - dataAttributePosition) < dataAttribute.length
                 && dataRun.GetRunLength() > 0)
             {
-                
-                if(count >= dataRunCount && dataRunCount != 0)
+
+                if (count >= dataRunCount && dataRunCount != 0)
                 {
                     break;
                 }
@@ -446,7 +445,7 @@ namespace File_Search_App
 
         private static string GetFilePath(FileData file, Dictionary<ulong, ulong> extensionRecordNums)
         {
-            
+
             string filePath = "";
             ulong fallbackParent;
             FileData? parentFile;
@@ -454,7 +453,7 @@ namespace File_Search_App
             extensionRecordNums.TryGetValue(file.ParentIndex, out fallbackParent);
 
             bool isParentFound =
-                filesDict.TryGetValue(file.ParentIndex, out parentFile) ||  
+                filesDict.TryGetValue(file.ParentIndex, out parentFile) ||
                 filesDict.TryGetValue(fallbackParent, out parentFile);
 
             if (isParentFound && parentFile != null)
@@ -484,7 +483,7 @@ namespace File_Search_App
             {
                 return file.FileName;
             }
-               
+
         }
 
 
@@ -587,7 +586,7 @@ namespace File_Search_App
                     int fileNameAttributeSize = attributePosition + Marshal.SizeOf(typeof(FileNameAttributeHeader));
                     fileNameAttribute = BytesToStruct<FileNameAttributeHeader>(mftBuffer[attributePosition..fileNameAttributeSize]);
 
-                    if(fileNameAttribute.namespaceType != 2)
+                    if (fileNameAttribute.namespaceType != 2)
                     {
                         fileNameFound = true;
                     }
@@ -643,7 +642,7 @@ namespace File_Search_App
             attributeListStart += attributeListAttribute.attributeOffset;
             attributeListEnd = attributeListStart + Marshal.SizeOf(typeof(AttributeListEntry));
 
-            if(attributeListAttribute.nonResident == 0)
+            if (attributeListAttribute.nonResident == 0)
             {
                 uint listSize = attributeListAttribute.attributeLength;
 
@@ -666,7 +665,7 @@ namespace File_Search_App
             }
         }
 
-           
+
 
         /// <summary>
         /// Converts a chosen struct into an array of bytes
