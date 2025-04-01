@@ -23,12 +23,14 @@ namespace File_Search_App
         private static Dictionary<ulong, FileData> filesDict = new Dictionary<ulong, FileData>();
         private static Dictionary<ulong, ulong> extensionRecordNums = new Dictionary<ulong, ulong>();
 
-        private static SafeFileHandle handle;
+        private static SafeFileHandle handle = new SafeFileHandle();
+        private static string volumeName = "";
 
         const int MFT_FILE_SIZE = 1024;
         const int MFT_FILES_PER_BUFFER = 65536;
 
-        static string volumeName = "";
+        #region Enums
+
         enum GenericAccessRights : uint
         {
             GENERIC_ALL = 0x10000000,
@@ -73,6 +75,8 @@ namespace File_Search_App
             BitMap = 0xB0,
             EndMarker = 0xFFFFFFFF,
         }
+
+        #endregion
 
         #region Structs 
 
@@ -565,8 +569,8 @@ namespace File_Search_App
 
             return dataAttribute;
         }
-
-        private static FileData GetFileNameAttribute(byte[] mftBuffer, Dictionary<ulong, ulong> extensionRecordNums, FileRecordHeader fileRecord, int fileRecordPosition)
+        //review this, review decision tree
+        private static FileData GetFileNameAttribute(byte[] mftBuffer, Dictionary<ulong, ulong> extensionRecordNums, FileRecordHeader fileRecord, int fileRecordPosition) 
         {
             int attributePosition = fileRecordPosition + fileRecord.firstAttributeOffset;
             int attributeListPosition = 0;
@@ -595,6 +599,8 @@ namespace File_Search_App
                     {
                         file = GetFileData(fileNameAttribute, fileRecord, attributePosition, mftBuffer);
                     }
+
+                    return file;
                 }
                 else if (attribute.attributeType == (uint)AttributeTypes.AttributeList)
                 {
