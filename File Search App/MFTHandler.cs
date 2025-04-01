@@ -593,14 +593,14 @@ namespace File_Search_App
                     if (fileNameAttribute.namespaceType != 2)
                     {
                         fileNameFound = true;
-                    }
 
-                    if (!fileNameAttribute.Equals(default(FileNameAttributeHeader)) && fileNameAttribute.nonResident == 0)
-                    {
-                        file = GetFileData(fileNameAttribute, fileRecord, attributePosition, mftBuffer);
-                    }
+                        if (!fileNameAttribute.Equals(default(FileNameAttributeHeader)) && fileNameAttribute.nonResident == 0)
+                        {
+                            file = GetFileData(fileNameAttribute, fileRecord, attributePosition, mftBuffer);
+                        }
 
-                    return file;
+                        return file;
+                    }
                 }
                 else if (attribute.attributeType == (uint)AttributeTypes.AttributeList)
                 {
