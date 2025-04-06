@@ -13,7 +13,6 @@ using System.Windows.Input;
 using System.Windows.Media;
 using Windows.Win32;
 using Windows.Win32.Storage.FileSystem;
-using static File_Search_App.MFTHandler;
 
 namespace File_Search_App
 {
@@ -288,21 +287,6 @@ namespace File_Search_App
         public static Dictionary<ulong, FileData> GetDriveFiles(string driveName, int dataRunCount = 0) // dataRunCount is the amount of dataruns to read. 0 means all
         {
 
-            //we know a constant to test by: files will always contain:
-            /*
-             * $MFTMirr
-             * $LogFile
-             * $Volume
-             * $AttrDef
-             * .
-             * $Bitmap
-             * $Boot
-             * $BadClus
-             * $Secure
-             * $UpCase
-             * $Extend
-             * */
-
             volumeName = driveName;
             handle = GetDriveHandle(driveName);
 
@@ -413,7 +397,7 @@ namespace File_Search_App
 
                         FileData file = GetFileNameAttribute(mftBuffer, extensionRecordNums, fileRecord, fileRecordPosition);
 
-                        if (!file.Equals(default(FileData)))
+                        if (!file.Equals(default(FileData)) && !String.IsNullOrWhiteSpace(file.FileName))
                         {
                             filesDict[file.FileIndex] = file;
                         }
@@ -475,9 +459,6 @@ namespace File_Search_App
                 }
 
                 filePath += GetFilePath(parentFile, extensionRecordNums);
-
-
-
 
                 filePath += "\\" + file.FileName;
 
@@ -575,14 +556,13 @@ namespace File_Search_App
             int attributePosition = fileRecordPosition + fileRecord.firstAttributeOffset;
             int attributeListPosition = 0;
             bool hasAttributeList = false;
-            bool fileNameFound = false;
 
             AttributeHeader attribute = BytesToStruct<AttributeHeader>(mftBuffer[attributePosition..(attributePosition + Marshal.SizeOf(typeof(AttributeHeader)))]);
             FileNameAttributeHeader fileNameAttribute = new FileNameAttributeHeader();
             ResidentAttributeHeader attributeListAttribute = new ResidentAttributeHeader();
             FileData file = new FileData();
 
-            while (attributePosition - fileRecordPosition < MFT_FILE_SIZE && !fileNameFound)
+            while (attributePosition - fileRecordPosition < MFT_FILE_SIZE)
             {
 
                 if (attribute.attributeType == (uint)AttributeTypes.FileName)
@@ -592,8 +572,6 @@ namespace File_Search_App
 
                     if (fileNameAttribute.namespaceType != 2)
                     {
-                        fileNameFound = true;
-
                         if (!fileNameAttribute.Equals(default(FileNameAttributeHeader)) && fileNameAttribute.nonResident == 0)
                         {
                             file = GetFileData(fileNameAttribute, fileRecord, attributePosition, mftBuffer);
@@ -609,7 +587,7 @@ namespace File_Search_App
                     int attributeListSize = attributePosition + Marshal.SizeOf(typeof(ResidentAttributeHeader));
                     attributeListAttribute = BytesToStruct<ResidentAttributeHeader>(mftBuffer[attributePosition..attributeListSize]);
                 }
-                else if (attribute.attributeType == (uint)AttributeTypes.EndMarker)
+                else if (attribute.attributeType > (uint)AttributeTypes.FileName)
                 {
                     break;
                 }
@@ -630,7 +608,7 @@ namespace File_Search_App
                 }
             }
 
-            if (hasAttributeList && !fileNameFound)
+            if (hasAttributeList)
             {
                 FindAttributeListFileName(mftBuffer, attributeListAttribute, extensionRecordNums, fileRecord.recordNum, attributeListPosition);
             }
