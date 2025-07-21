@@ -7,7 +7,7 @@ An app that parses the NTFS Master File Table to quickly find and search through
 * Sort through files with the search bar
 * Open files or their file location in Windows Explorer
 
-# App must be run with administrator privileges to scan files.
+App must be run with administrator privileges to scan files.
 
 Written in C#, and compiled in .NET 8.0.
 
