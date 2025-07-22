@@ -12,4 +12,4 @@ App must be run with administrator privileges to scan files.
 Written in C#, and compiled in .NET 8.0.
 
 #
-![image](https://github.com/user-attachments/assets/7a2edad3-570d-4eba-89ca-98839b80e42d)
+![image](https://github.com/user-attachments/assets/16f4375e-177a-47e0-83da-9e8ea1b35b01)
